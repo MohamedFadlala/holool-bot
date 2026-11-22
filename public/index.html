@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#081d40">
+  <title>Bot setup | holool-bot</title>
+  <link rel="icon" href="/assets/holool-mark.webp">
+  <link rel="stylesheet" href="/dashboard.css">
+  <script src="/dashboard.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a href="#overview" class="brand"><img src="/assets/holool-mark.webp" width="37" height="37" alt=""><span>holool<span class="brand-accent">-bot</span></span></a>
+    <nav aria-label="Setup sections">
+      <a href="#overview" class="current" aria-current="location"><span aria-hidden="true">▦</span>Overview</a>
+      <a href="#prompt"><span aria-hidden="true">≡</span>System prompt</a>
+      <a href="#provider"><span aria-hidden="true">✦</span>AI provider</a>
+      <a href="#whatsapp"><span aria-hidden="true">☎</span>WhatsApp</a>
+    </nav>
+    <footer><img src="/assets/holool-logo.webp" alt="Holool" width="64" height="56"><span>Holool<br><small>Software &amp; IT Solutions</small></span></footer>
+  </aside>
+  <main id="overview">
+    <header class="topbar"><span>Workspace <span class="separator">/</span> <strong>Bot setup</strong></span><span class="local"><i></i> Local dashboard</span></header>
+    <div class="workspace">
+      <section class="hero" aria-labelledby="title">
+        <div class="hero-copy">
+          <h1>Set up your bot</h1>
+          <p>Shape how your bot responds, choose an AI model, and link your WhatsApp account.</p>
+          <a href="#prompt">Configure bot <span aria-hidden="true">↓</span></a>
+        </div>
+      </section>
+      <section class="summary" aria-label="Setup status">
+        <a href="#prompt"><span class="tile-icon" aria-hidden="true">≡</span><span><strong>System prompt</strong><small id="prompt-state">Loading…</small></span><b aria-hidden="true">›</b></a>
+        <a href="#provider"><span class="tile-icon" aria-hidden="true">✦</span><span><strong>AI provider</strong><small id="provider-state">Loading…</small></span><b aria-hidden="true">›</b></a>
+        <a href="#whatsapp"><span class="tile-icon green" aria-hidden="true">☎</span><span><strong>WhatsApp</strong><small id="whatsapp-state">Loading…</small></span><b aria-hidden="true">›</b></a>
+      </section>
+      <p id="load-error" role="alert" hidden></p>
+      <form class="panel" id="prompt">
+        <div class="panel-head"><span class="tile-icon" aria-hidden="true">≡</span><div><h2>System prompt</h2><p>Define the bot’s role, tone, and rules for answering customers.</p></div></div>
+        <fieldset disabled>
+          <label for="system-prompt">Instructions</label>
+          <textarea id="system-prompt" name="prompt" rows="7" maxlength="32000" dir="auto" required spellcheck="false"></textarea>
+          <div class="actions"><p class="feedback" role="status"></p><output id="prompt-length" for="system-prompt"></output><button>Save prompt</button></div>
+        </fieldset>
+      </form>
+
+      <form class="panel" id="provider">
+        <div class="panel-head"><span class="tile-icon" aria-hidden="true">✦</span><div><h2>AI provider</h2><p>Choose the model that generates replies and store its API key.</p></div></div>
+        <fieldset disabled>
+          <div class="provider-options" aria-label="AI provider" role="group">
+            <button type="button" data-provider="ollama" aria-pressed="false">Ollama</button>
+            <button type="button" data-provider="openrouter" aria-pressed="false">OpenRouter</button>
+            <button type="button" data-provider="gemini" aria-pressed="false">Gemini</button>
+          </div>
+          <div class="fields">
+            <div><label for="model">Model ID</label><input id="model" name="model" maxlength="256" required></div>
+            <div><label for="api-key">API key</label><input id="api-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false"></div>
+          </div>
+          <p class="hint" id="provider-hint"></p>
+          <div class="actions"><p class="feedback" role="status"></p><button class="secondary" type="button" data-test>Test active provider</button><button>Save and activate</button></div>
+        </fieldset>
+      </form>
+
+      <section class="panel" id="whatsapp" aria-labelledby="whatsapp-heading">
+        <div class="panel-head"><span class="tile-icon green" aria-hidden="true">☎</span><div><h2 id="whatsapp-heading">WhatsApp</h2><p>Link holool-bot as a device on your WhatsApp account.</p></div></div>
+        <div class="pairing-panel">
+          <p id="pairing-status" role="status">Checking connection…</p>
+          <div class="pairing-code" hidden>
+            <p>On your phone, open WhatsApp and choose <strong>Linked devices → Link a device</strong>. Scan this QR code.</p>
+            <img id="whatsapp-qr" alt="WhatsApp device linking QR code" width="270" height="270">
+          </div>
+          <div class="actions"><button id="connect-whatsapp" type="button" disabled>Connect WhatsApp</button></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

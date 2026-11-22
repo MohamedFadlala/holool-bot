@@ -1,0 +1,19 @@
+services:
+  holool-bot:
+    build: .
+    container_name: holool-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOLOOL_BIND_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:${HOLOOL_PORT:-3000}:${HOLOOL_PORT:-3000}"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,15 @@
+[Unit]
+Description=Sudan Marketing Chatbot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ubuntu/salesbot
+ExecStart=/usr/bin/node dist/main.js
+Restart=always
+RestartSec=10
+Environment=PATH=/usr/bin:/usr/local/bin
+
+[Install]
+WantedBy=multi-user.target
