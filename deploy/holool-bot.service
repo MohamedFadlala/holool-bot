@@ -1,0 +1,25 @@
+[Unit]
+Description=Holool Bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=holool-bot
+Group=holool-bot
+WorkingDirectory=/opt/holool-bot/current
+EnvironmentFile=/etc/holool-bot/runtime.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+UMask=0077
+StateDirectory=holool-bot
+StateDirectoryMode=0700
+LogsDirectory=holool-bot
+LogsDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

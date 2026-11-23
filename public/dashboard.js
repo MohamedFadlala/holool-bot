@@ -116,16 +116,18 @@ $("[data-test]", providerForm).addEventListener("click", () =>
   action(providerForm, async () => (await request("provider/test", {})).message));
 
 const connectButton = $("#connect-whatsapp");
+const disconnectButton = $("#disconnect-whatsapp");
 const qrImage = $("#whatsapp-qr");
 const qrPanel = $(".pairing-code");
 const whatsappLabels = {
   disconnected: "Disconnected",
   connecting: "Connecting…",
+  disconnecting: "Disconnecting…",
   pairing: "Waiting for scan",
   connected: "Connected",
   error: "Connection failed"
 };
-let requestingConnection = false;
+let whatsappActionPending = false;
 
 function showWhatsApp(status) {
   const label = whatsappLabels[status.state];
@@ -134,13 +136,17 @@ function showWhatsApp(status) {
   const message = status.message || {
     disconnected: "No WhatsApp device is linked.",
     connecting: "Connecting to WhatsApp…",
+    disconnecting: "Removing the saved WhatsApp session…",
     pairing: "Waiting for you to scan the QR code.",
     connected: "WhatsApp is linked and ready to receive messages."
   }[status.state];
   if (statusText.textContent !== message) statusText.textContent = message;
   statusText.classList.toggle("error", status.state === "error");
-  connectButton.hidden = status.state === "connected" || status.state === "pairing";
-  connectButton.disabled = requestingConnection || status.state === "connecting";
+  connectButton.hidden = !["disconnected", "error"].includes(status.state);
+  connectButton.disabled = whatsappActionPending;
+  disconnectButton.hidden = status.state === "disconnected" || (status.state === "error" && !status.hasLinkedDevice);
+  disconnectButton.disabled = whatsappActionPending || status.state === "disconnecting";
+  $("#disconnect-hint").hidden = disconnectButton.hidden;
   connectButton.textContent = status.state === "error" ? "Try again" : "Connect WhatsApp";
 
   qrPanel.hidden = status.state !== "pairing";
@@ -155,27 +161,30 @@ function showWhatsApp(status) {
 async function refreshWhatsApp() {
   try {
     const status = await request("whatsapp");
-    if (!requestingConnection) showWhatsApp(status);
+    if (!whatsappActionPending) showWhatsApp(status);
   } catch {
-    if (!requestingConnection) showWhatsApp({ state: "error", message: "Could not check WhatsApp. Retrying…" });
+    if (!whatsappActionPending) showWhatsApp({ state: "error", message: "Could not check WhatsApp. Retrying…" });
   } finally {
     setTimeout(refreshWhatsApp, 2000);
   }
 }
 
-connectButton.addEventListener("click", async () => {
-  requestingConnection = true;
-  showWhatsApp({ state: "connecting" });
+async function changeWhatsAppConnection(action, state) {
+  whatsappActionPending = true;
+  showWhatsApp({ state });
   let status;
   try {
-    status = await request("whatsapp/connect", {});
+    status = await request("whatsapp/" + action, {});
   } catch (error) {
     status = { state: "error", message: error.message };
   } finally {
-    requestingConnection = false;
+    whatsappActionPending = false;
     showWhatsApp(status);
   }
-});
+}
+
+connectButton.addEventListener("click", () => changeWhatsAppConnection("connect", "connecting"));
+disconnectButton.addEventListener("click", () => changeWhatsAppConnection("disconnect", "disconnecting"));
 
 void refreshWhatsApp();
 

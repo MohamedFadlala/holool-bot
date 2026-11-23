@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { toBuffer } from "qrcode";
+import { hasLinkedDevice } from "../whatsapp/auth-store";
 import { sessionManager } from "../whatsapp/session-manager";
 import { Settings } from "../config/settings";
 import { getProvider } from "../providers";
@@ -14,7 +15,9 @@ const whatsappSessionId = "default";
 
 function whatsappStatus() {
     const status = sessionManager.getStatus(whatsappSessionId);
-    return status.state === "pairing" ? { state: status.state, qrId: status.qrId } : status;
+    if (status.state === "pairing") return { state: status.state, qrId: status.qrId };
+    if (status.state === "error") return { ...status, hasLinkedDevice: hasLinkedDevice(whatsappSessionId) };
+    return status;
 }
 
 const assets: Record<string, string> = {
@@ -113,6 +116,9 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
             saveProvider({ provider, model, apiKey, freePlanConfirmed });
             break;
         }
+        case "/api/whatsapp/disconnect":
+            await sessionManager.disconnectSession(whatsappSessionId);
+            return json(res, whatsappStatus());
         case "/api/whatsapp/connect":
             void sessionManager.startSession(whatsappSessionId);
             return json(res, whatsappStatus(), 202);
@@ -126,7 +132,17 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
 
 export function startDashboard() {
     const port = Number(process.env.HOLOOL_PORT || 3000);
-    const allowedHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
+    const allowedOrigins = new Map([
+        [`127.0.0.1:${port}`, `http://127.0.0.1:${port}`],
+        [`localhost:${port}`, `http://localhost:${port}`]
+    ]);
+    if (process.env.HOLOOL_PUBLIC_ORIGIN) {
+        const publicOrigin = new URL(process.env.HOLOOL_PUBLIC_ORIGIN);
+        if (publicOrigin.protocol !== "https:" || publicOrigin.origin !== process.env.HOLOOL_PUBLIC_ORIGIN) {
+            throw new Error("HOLOOL_PUBLIC_ORIGIN must be an HTTPS origin with no path.");
+        }
+        allowedOrigins.set(publicOrigin.host, publicOrigin.origin);
+    }
     const root = resolve(__dirname, "../../public");
 
     const dashboard = createServer(async (req, res) => {
@@ -136,8 +152,8 @@ export function startDashboard() {
         try {
             const host = req.headers.host || "";
             const origin = req.headers.origin;
-            if (!allowedHosts.includes(host) || (origin && origin !== `http://${host}`) ||
-                req.headers["sec-fetch-site"] === "cross-site") throw new HttpError(403, "Open the dashboard locally.");
+            if (!allowedOrigins.has(host) || (origin && origin !== allowedOrigins.get(host)) ||
+                req.headers["sec-fetch-site"] === "cross-site") throw new HttpError(403, "Open the dashboard at its configured address.");
             const url = new URL(req.url || "/", "http://localhost");
             const path = url.pathname;
             if (req.method === "GET" && path === "/api/settings") return json(res, snapshot());

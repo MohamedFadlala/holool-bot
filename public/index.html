@@ -70,7 +70,11 @@
             <p>On your phone, open WhatsApp and choose <strong>Linked devices → Link a device</strong>. Scan this QR code.</p>
             <img id="whatsapp-qr" alt="WhatsApp device linking QR code" width="270" height="270">
           </div>
-          <div class="actions"><button id="connect-whatsapp" type="button" disabled>Connect WhatsApp</button></div>
+          <div class="actions">
+            <button id="connect-whatsapp" type="button" disabled>Connect WhatsApp</button>
+            <button id="disconnect-whatsapp" class="secondary" type="button" hidden aria-describedby="disconnect-hint">Disconnect WhatsApp</button>
+          </div>
+          <p class="hint" id="disconnect-hint" hidden>Disconnecting removes this bot’s saved session. You’ll need to scan a new QR code to reconnect.</p>
         </div>
       </section>
     </div>

@@ -15,11 +15,11 @@ const chatRepo = new ChatRepository();
  * Track whether a user's pending buffer contains a bank transaction image.
  * This is checked when the buffer flushes to decide what text to store in history.
  */
-const bankTransactionFlags = new Map<string, boolean>();
+const bankTransactionFlags = new WeakMap<WASocket, Set<string>>();
 
-export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sessionId: string) {
+export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sessionId: string, isActive = () => true) {
     try {
-        if (!msg.message) return;
+        if (!isActive() || !msg.message) return;
 
         const remoteJid = msg.key.remoteJid;
         if (!remoteJid || remoteJid === "status@broadcast") return;
@@ -46,6 +46,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
             } catch (transcribeError: any) {
                 Logger.error(`[${sessionId}] Transcription failed: ${transcribeError.message}`);
                 const fallbackMsg = "عذراً، لم أتمكن من فهم الرسالة الصوتية. ممكن تكتب الرسالة؟";
+                if (!isActive()) return;
                 await sock.sendMessage(remoteJid, { text: fallbackMsg }, { quoted: msg });
                 return;
             }
@@ -53,6 +54,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
             // If transcription returned unclear/empty, ask user to type
             if (!text || text === "[unclear]") {
                 const unclearMsg = "عذراً، الصوت مش واضح كفاية. ممكن تعيد التسجيل أو تكتب الرسالة؟";
+                if (!isActive()) return;
                 await sock.sendMessage(remoteJid, { text: unclearMsg }, { quoted: msg });
                 return;
             }
@@ -77,6 +79,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
             } catch (imageError: any) {
                 Logger.error(`[${sessionId}] Image analysis failed: ${imageError.message}`);
                 const fallbackMsg = "عذراً، ما قادر أقرا الصورة دي. ممكن ترسلها تاني أو تكتب الرسالة؟";
+                if (!isActive()) return;
                 await sock.sendMessage(remoteJid, { text: fallbackMsg }, { quoted: msg });
                 return;
             }
@@ -100,15 +103,19 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
             await sock.readMessages([msg.key]);
         }
 
+        if (!isActive()) return;
         Logger.info(`[${sessionId}] Received message from ${remoteJid}: ${text.substring(0, 100)}${text.length > 100 ? "..." : ""}`);
 
         // Upsert user record on first contact
         chatRepo.upsertUser(remoteJid, pushName, "");
 
         // Store bank transaction flag for this user before pushing to buffer
-        if (isBankTransaction) {
-            bankTransactionFlags.set(remoteJid, true);
+        let flags = bankTransactionFlags.get(sock);
+        if (!flags) {
+            flags = new Set();
+            bankTransactionFlags.set(sock, flags);
         }
+        if (isBankTransaction) flags.add(remoteJid);
 
         // Instead of processing immediately, push to the debounce buffer.
         // The bot will wait for DEBOUNCE_SECONDS after the user's last message to see
@@ -118,8 +125,8 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                 // Determine what text to store in chat history:
                 // - If a bank transaction image was detected → store the special token
                 // - Otherwise → store the combined text (image descriptions, transcriptions, etc.)
-                const hasBankTransaction = bankTransactionFlags.get(jid) || false;
-                bankTransactionFlags.delete(jid); // Clear the flag
+                if (!isActive()) return;
+                const hasBankTransaction = flags.delete(jid);
 
                 let historyText: string;
                 if (hasBankTransaction) {
@@ -146,6 +153,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                 // Show typing indicator now — debounce is done, user is about to get a reply
                 await wsock.sendPresenceUpdate('composing', jid);
 
+                if (!isActive()) return;
                 const provider = getProvider();
                 let aiResponse = "";
                 
@@ -156,11 +164,13 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                     aiResponse = "Sorry, I am having trouble processing your request right now. Please try again later.";
                 }
 
+                if (!isActive()) return;
                 // Add assistant message to history
                 chatRepo.addMessage(jid, "assistant", aiResponse);
 
                 // Send reply
                 await wsock.sendPresenceUpdate('paused', jid);
+                if (!isActive()) return;
                 await wsock.sendMessage(jid, { text: aiResponse }, { quoted: lastMsg });
 
             } catch (error) {

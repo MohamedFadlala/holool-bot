@@ -19,6 +19,14 @@ type OnCompleteCallback = (
 class MessageBuffer {
     private buffers: Map<string, BufferEntry> = new Map();
 
+    cancel(socket: WASocket) {
+        for (const [jid, entry] of this.buffers) {
+            if (entry.sock !== socket) continue;
+            clearTimeout(entry.timer);
+            this.buffers.delete(jid);
+        }
+    }
+
     /**
      * Push a message text into the user's buffer.
      * Resets the 5-second debounce timer every time a new message arrives.

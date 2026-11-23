@@ -18,12 +18,13 @@ export function clearAuthState(sessionId: string) {
         .run(prefix.length, prefix);
 }
 
-export const useSqliteAuthState = async (sessionId: string): Promise<{ state: AuthenticationState, saveCreds: () => void; getWriteErrorCount: () => number }> => {
+export const useSqliteAuthState = async (sessionId: string, signal: AbortSignal): Promise<{ state: AuthenticationState, saveCreds: () => void; getWriteErrorCount: () => number }> => {
     const db = getConnection();
 
     let writeErrorCount = 0;
 
     const writeData = (id: string, data: any) => {
+        if (signal.aborted) return;
         const str = JSON.stringify(data, BufferJSON.replacer);
         db.prepare(`
             INSERT INTO whatsapp_sessions (id, session_data) 
@@ -37,6 +38,7 @@ export const useSqliteAuthState = async (sessionId: string): Promise<{ state: Au
     };
 
     const removeData = (id: string) => {
+        if (signal.aborted) return;
         try {
             db.prepare("DELETE FROM whatsapp_sessions WHERE id = ?").run(id);
         } catch (e) {

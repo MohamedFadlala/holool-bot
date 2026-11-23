@@ -4,18 +4,21 @@ import type { Boom } from "@hapi/boom";
 import * as qrcode from "qrcode-terminal";
 import pino from "pino";
 import { Logger } from "../utils/logger";
-import { clearAuthState, useSqliteAuthState } from "./auth-store";
+import { clearAuthState, hasLinkedDevice, useSqliteAuthState } from "./auth-store";
+import { messageBuffer } from "./message-buffer";
 import { handleIncomingMessage } from "./handlers";
 
 type ConnectionStatus =
-    | { state: "disconnected" | "connecting" | "connected" }
+    | { state: "disconnected"; message?: string }
+    | { state: "connecting" | "connected" | "disconnecting" }
     | { state: "pairing"; qr: string; qrId: string }
     | { state: "error"; message: string };
 
 class SessionManager {
     private sessions = new Map<string, WASocket>();
     private statuses = new Map<string, ConnectionStatus>();
-    private starting = new Set<string>();
+    private connections = new Map<string, AbortController>();
+    private retryTimers = new Map<string, NodeJS.Timeout>();
     private retries = new Map<string, number>();
     private logger = pino({ level: "silent" });
 
@@ -23,19 +26,64 @@ class SessionManager {
         return this.statuses.get(sessionId) ?? { state: "disconnected" };
     }
 
+    async disconnectSession(sessionId: string) {
+        if (this.getStatus(sessionId).state === "disconnecting") return;
+        this.statuses.set(sessionId, { state: "disconnecting" });
+        this.connections.get(sessionId)?.abort();
+        this.connections.delete(sessionId);
+        clearTimeout(this.retryTimers.get(sessionId));
+        this.retryTimers.delete(sessionId);
+        this.retries.delete(sessionId);
+
+        const socket = this.sessions.get(sessionId);
+        this.sessions.delete(sessionId);
+        if (socket) messageBuffer.cancel(socket);
+
+        let remoteLogoutFailed = false;
+        try {
+            remoteLogoutFailed = hasLinkedDevice(sessionId) || Boolean(socket?.user);
+            clearAuthState(sessionId);
+            if (socket?.user) {
+                try {
+                    await socket.logout();
+                    remoteLogoutFailed = false;
+                } catch {
+                    Logger.warn(`[${sessionId}] Could not send the logout request to WhatsApp.`);
+                }
+            }
+            this.statuses.set(sessionId, remoteLogoutFailed
+                ? { state: "disconnected", message: "Session removed from this bot. To remove the device from WhatsApp, open Linked devices on your phone." }
+                : { state: "disconnected" });
+            Logger.info(`[${sessionId}] WhatsApp session forgotten.`);
+        } catch {
+            this.statuses.set(sessionId, {
+                state: "error",
+                message: "Could not remove the saved session. Check that the database is writable and try again."
+            });
+        } finally {
+            socket?.end(undefined);
+        }
+    }
+
     async startSession(sessionId: string, terminalQR = false, retry = false) {
-        if (this.sessions.has(sessionId) || this.starting.has(sessionId)) return;
-        if (!retry && this.getStatus(sessionId).state === "connecting") return;
+        if (this.connections.has(sessionId)) return;
+        const status = this.getStatus(sessionId).state;
+        if (status === "disconnecting" || (!retry && status === "connecting")) return;
         if (!retry) this.retries.delete(sessionId);
 
-        this.starting.add(sessionId);
+        const controller = new AbortController();
+        const signal = controller.signal;
+        this.connections.set(sessionId, controller);
         this.statuses.set(sessionId, { state: "connecting" });
         try {
-            const { state, saveCreds, getWriteErrorCount } = await useSqliteAuthState(sessionId);
-            const webVersion = await fetchLatestWaWebVersion({ signal: AbortSignal.timeout(10000) });
+            const { state, saveCreds, getWriteErrorCount } = await useSqliteAuthState(sessionId, signal);
+            if (signal.aborted) return;
+            const webVersion = await fetchLatestWaWebVersion({ signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]) });
+            if (signal.aborted) return;
             const { version } = webVersion.isLatest
                 ? webVersion
-                : await fetchLatestBaileysVersion({ signal: AbortSignal.timeout(10000) });
+                : await fetchLatestBaileysVersion({ signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]) });
+            if (signal.aborted) return;
             const socket = makeWASocket({
                 version,
                 auth: state,
@@ -60,6 +108,9 @@ class SessionManager {
                 if (connection !== "close") return;
 
                 this.sessions.delete(sessionId);
+                this.connections.delete(sessionId);
+                controller.abort();
+                messageBuffer.cancel(socket);
                 const reason = (lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
                 Logger.info(`[${sessionId}] WhatsApp connection closed (code ${reason ?? "unknown"}).`);
                 if (reason === DisconnectReason.loggedOut) {
@@ -84,7 +135,10 @@ class SessionManager {
                 this.retries.set(sessionId, attempts);
                 this.statuses.set(sessionId, { state: "connecting" });
                 const delay = reason === DisconnectReason.restartRequired ? 0 : 5000;
-                setTimeout(() => void this.startSession(sessionId, terminalQR, true), delay);
+                this.retryTimers.set(sessionId, setTimeout(() => {
+                    this.retryTimers.delete(sessionId);
+                    void this.startSession(sessionId, terminalQR, true);
+                }, delay));
             });
 
             socket.ev.on("creds.update", () => {
@@ -99,14 +153,16 @@ class SessionManager {
             socket.ev.on("messages.upsert", async ({ type, messages }) => {
                 if (type !== "notify" || this.sessions.get(sessionId) !== socket) return;
                 for (const message of messages) {
-                    await handleIncomingMessage(socket, message, sessionId);
+                    if (signal.aborted) break;
+                    await handleIncomingMessage(socket, message, sessionId, () => !signal.aborted);
                 }
             });
         } catch (error) {
+            if (signal.aborted) return;
+            this.connections.delete(sessionId);
+            controller.abort();
             Logger.error(`[${sessionId}] Could not start WhatsApp: ${error instanceof Error ? error.message : "Unknown error"}`);
             this.statuses.set(sessionId, { state: "error", message: "Could not start WhatsApp. Check the bot logs and try again." });
-        } finally {
-            this.starting.delete(sessionId);
         }
     }
 }

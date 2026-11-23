@@ -19,6 +19,8 @@ Open [Bot setup](http://127.0.0.1:3000).
 3. Under **WhatsApp**, select **Connect WhatsApp**. On your phone, open WhatsApp and go to **Linked devices → Link a device**, then scan the QR code shown in the dashboard.
 4. Once the status reads **Connected**, send a message from another WhatsApp account to try the bot.
 
+Use **Disconnect WhatsApp** to forget the saved device session. Reconnecting requires a new QR scan.
+
 The dashboard starts before you enter any API keys. Saved settings and WhatsApp sessions live in SQLite. holool-bot reconnects a saved WhatsApp session when it starts. The dashboard shows whether a provider key is saved. Leave its field blank to keep the saved key, or enter a replacement to rotate it.
 
 - **OpenRouter Free** loads the current selection of free chat models. Its **Automatic** option picks an available free model. Enter an [OpenRouter API key](https://openrouter.ai/settings/keys).
@@ -29,3 +31,7 @@ Set `GROQ_API_KEY` in `.env` to enable voice transcription. To link an account f
 ## Docker
 
 Copy `.env.example` to `.env` and run `docker compose up --build -d`. Compose publishes the dashboard to host loopback on port 3000.
+
+## Production
+
+GitHub Actions builds pull requests and deploys verified commits from `main` to [bot.holoolsoftware.com](https://bot.holoolsoftware.com). Nginx terminates TLS and authenticates the dashboard. The Node process listens on server loopback and accepts the public HTTPS origin through `HOLOOL_PUBLIC_ORIGIN`. The deploy script switches releases after a build and restores the previous version if the service fails its health check.

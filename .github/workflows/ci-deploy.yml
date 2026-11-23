@@ -1,0 +1,50 @@
+name: CI and deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: git config --global url.https://github.com/.insteadOf ssh://git@github.com/
+      - run: npm ci --no-audit
+      - run: npm run build
+      - run: node --check public/dashboard.js
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://bot.holoolsoftware.com
+    concurrency:
+      group: holool-bot-production
+      cancel-in-progress: false
+    steps:
+      - name: Deploy the verified commit
+        env:
+          DEPLOY_KEY: ${{ secrets.HOLOOL_BOT_DEPLOY_KEY }}
+          KNOWN_HOST: ${{ vars.HOLOOL_BOT_SSH_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$DEPLOY_KEY" | base64 --decode > "$RUNNER_TEMP/holool-bot-key"
+          printf '%s\n' "$KNOWN_HOST" > "$RUNNER_TEMP/holool-bot-known-hosts"
+          trap 'rm -f "$RUNNER_TEMP/holool-bot-key" "$RUNNER_TEMP/holool-bot-known-hosts"' EXIT
+          ssh -i "$RUNNER_TEMP/holool-bot-key" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/holool-bot-known-hosts" \
+            holool-bot@bot.holoolsoftware.com "$GITHUB_SHA"
