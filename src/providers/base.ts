@@ -1,3 +1,4 @@
+import type { UsageReporter } from "../storage/usage";
 import { ChatMessage } from "../storage/models";
 
 export interface ImageDescription {
@@ -11,7 +12,7 @@ export interface AIProvider {
      * @param messages List of chat messages
      * @returns The assistant's response text
      */
-    chat(messages: ChatMessage[]): Promise<string>;
+    chat(messages: ChatMessage[], reportUsage?: UsageReporter): Promise<string>;
 
     /**
      * Describe an image using a multimodal vision model.
@@ -23,7 +24,7 @@ export interface AIProvider {
      * @param mimeType MIME type of the image (e.g., "image/jpeg", "image/png")
      * @returns Structured description with bank transaction flag
      */
-    describeImage(imageBuffer: Buffer, mimeType: string): Promise<ImageDescription>;
+    describeImage(imageBuffer: Buffer, mimeType: string, reportUsage?: UsageReporter): Promise<ImageDescription>;
 
     /**
      * Return True if the provider is reachable and functional.

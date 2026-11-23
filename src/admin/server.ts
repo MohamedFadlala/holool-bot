@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { toBuffer } from "qrcode";
 import { hasLinkedDevice } from "../whatsapp/auth-store";
 import { sessionManager } from "../whatsapp/session-manager";
+import { chatDetail, listChats, usageReporter, usageSummary } from "../storage/usage";
 import { Settings } from "../config/settings";
 import { getProvider } from "../providers";
 import { geminiModels } from "../providers/gemini";
@@ -23,6 +24,9 @@ function whatsappStatus() {
 
 const assets: Record<string, string> = {
     "/": "index.html",
+    "/chats": "chats.html",
+    "/chats.css": "chats.css",
+    "/chats.js": "chats.js",
     "/dashboard.css": "dashboard.css",
     "/dashboard.js": "dashboard.js",
     "/assets/holool-mark.webp": "assets/holool-mark.webp",
@@ -75,7 +79,7 @@ async function testProvider() {
     const configured = Settings[providers[name].key];
     if (!configured) throw new HttpError(400, `Save an API key for ${label} first.`);
     try {
-        await getProvider().chat([{ role: "user", content: "Reply with one word: ready." }]);
+        await getProvider().chat([{ role: "user", content: "Reply with one word: ready." }], usageReporter(null));
         return { message: `${label} generated a test reply.` };
     } catch (error) {
         const status = isAxiosError(error) ? error.response?.status : (error as { status?: number })?.status;
@@ -138,6 +142,32 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
     json(res, snapshot());
 }
 
+function usageSince(query: URLSearchParams) {
+    const range = query.get("range") ?? "30";
+    if (range === "all") return "";
+    if (!["7", "30", "90"].includes(range)) throw new HttpError(400, "Choose a supported date range.");
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+    start.setUTCDate(start.getUTCDate() - Number(range) + 1);
+    return start.toISOString().slice(0, 10);
+}
+
+function usageDashboard(res: ServerResponse, path: string, query: URLSearchParams) {
+    const since = usageSince(query);
+    if (path === "/api/usage") return json(res, usageSummary(since));
+    if (path === "/api/chats") {
+        const offset = Number(query.get("offset") ?? "0");
+        if (!Number.isSafeInteger(offset) || offset < 0) throw new HttpError(400, "Invalid page.");
+        return json(res, listChats(since, (query.get("q") ?? "").slice(0, 120), offset, query.get("sort") ?? "recent"));
+    }
+    const id = query.get("id");
+    const before = Number(query.get("before") ?? Number.MAX_SAFE_INTEGER);
+    if (!id || !Number.isSafeInteger(before) || before < 1) throw new HttpError(400, "Invalid chat request.");
+    const result = chatDetail(id, since, before);
+    if (!result) throw new HttpError(404, "Chat not found.");
+    return json(res, result);
+}
+
 export function startDashboard() {
     const port = Number(process.env.HOLOOL_PORT || 3000);
     const allowedOrigins = new Map([
@@ -164,6 +194,9 @@ export function startDashboard() {
                 req.headers["sec-fetch-site"] === "cross-site") throw new HttpError(403, "Open the dashboard at its configured address.");
             const url = new URL(req.url || "/", "http://localhost");
             const path = url.pathname;
+            if (req.method === "GET" && ["/api/usage", "/api/chats", "/api/chat"].includes(path)) {
+                return usageDashboard(res, path, url.searchParams);
+            }
             if (req.method === "GET" && path === "/api/settings") return json(res, snapshot());
             if (req.method === "GET" && path === "/api/provider/models") return json(res, await modelChoices());
             if (req.method === "GET" && path === "/api/whatsapp") return json(res, whatsappStatus());

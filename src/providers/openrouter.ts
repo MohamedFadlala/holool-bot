@@ -1,5 +1,6 @@
 import axios from "axios";
 import { AIProvider, ImageDescription } from "./base";
+import type { UsageReporter } from "../storage/usage";
 import { Settings } from "../config/settings";
 import { ChatMessage, toDict } from "../storage/models";
 
@@ -43,7 +44,7 @@ export class OpenRouterProvider implements AIProvider {
         console.log(`OpenRouterProvider initialized (model=${this.model})`);
     }
 
-    async chat(messages: ChatMessage[]): Promise<string> {
+    async chat(messages: ChatMessage[], reportUsage?: UsageReporter): Promise<string> {
         const payload = {
             model: this.model,
             messages: messages.map(toDict)
@@ -57,6 +58,14 @@ export class OpenRouterProvider implements AIProvider {
             timeout: 60000
         });
 
+        const usage = response.data.usage;
+        const reportedCost = typeof usage?.cost === "number" ? usage.cost : undefined;
+        reportUsage?.({
+            provider: "openrouter", model: response.data.model || this.model,
+            inputTokens: usage?.prompt_tokens, outputTokens: usage?.completion_tokens,
+            totalTokens: usage?.total_tokens, costUsd: reportedCost ?? 0,
+            costBasis: reportedCost === undefined ? "free" : "reported"
+        });
         const content = response.data.choices?.[0]?.message?.content?.trim();
         if (!content) throw new Error("OpenRouter returned an empty reply.");
         return content;

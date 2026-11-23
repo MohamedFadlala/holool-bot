@@ -1,4 +1,5 @@
 import { WASocket, WAMessage } from "@whiskeysockets/baileys";
+import { usageReporter } from "../storage/usage";
 import { ChatRepository } from "../storage/repository";
 import { getProvider } from "../providers";
 import { Logger } from "../utils/logger";
@@ -28,6 +29,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
         if (msg.key.fromMe) return;
 
         const pushName = msg.pushName || "User";
+        const reportUsage = usageReporter(remoteJid, pushName);
 
         // Detect message type and extract text
         let text = "";
@@ -41,7 +43,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
             await sock.readMessages([msg.key]);
 
             try {
-                text = await transcribeAudio(msg);
+                text = await transcribeAudio(msg, reportUsage);
                 Logger.info(`[${sessionId}] Transcription result: "${text}"`);
             } catch (transcribeError: any) {
                 Logger.error(`[${sessionId}] Transcription failed: ${transcribeError.message}`);
@@ -71,7 +73,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                 // Create a SEPARATE provider instance for image description
                 // (distinct from the main chat instance used in the buffer callback)
                 const visionProvider = getProvider();
-                const result = await visionProvider.describeImage(buffer, mimeType);
+                const result = await visionProvider.describeImage(buffer, mimeType, reportUsage);
 
                 text = result.description;
                 isBankTransaction = result.isBankTransaction;
@@ -158,7 +160,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                 let aiResponse = "";
                 
                 try {
-                    aiResponse = await provider.chat(messagesForProvider);
+                    aiResponse = await provider.chat(messagesForProvider, reportUsage);
                 } catch (error: any) {
                     Logger.error(`[${sessionId}] AI Provider Error: ${error.message}`);
                     aiResponse = "Sorry, I am having trouble processing your request right now. Please try again later.";

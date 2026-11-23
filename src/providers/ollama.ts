@@ -1,5 +1,6 @@
 import axios from "axios";
 import { AIProvider, ImageDescription } from "./base";
+import type { UsageReporter } from "../storage/usage";
 import { Settings } from "../config/settings";
 import { ChatMessage, toDict } from "../storage/models";
 
@@ -18,7 +19,7 @@ export class OllamaProvider implements AIProvider {
         console.log(`OllamaProvider initialized (host=${this.host}, model=${this.model})`);
     }
 
-    async chat(messages: ChatMessage[]): Promise<string> {
+    async chat(messages: ChatMessage[], reportUsage?: UsageReporter): Promise<string> {
         const payload = {
             model: this.model,
             messages: messages.map(toDict),
@@ -29,10 +30,14 @@ export class OllamaProvider implements AIProvider {
             headers: this.headers, timeout: 60000
         });
 
+        reportUsage?.({
+            provider: "ollama", model: response.data.model || this.model,
+            inputTokens: response.data.prompt_eval_count, outputTokens: response.data.eval_count
+        });
         return response.data.message.content;
     }
 
-    async describeImage(imageBuffer: Buffer, mimeType: string): Promise<ImageDescription> {
+    async describeImage(imageBuffer: Buffer, mimeType: string, reportUsage?: UsageReporter): Promise<ImageDescription> {
         // Convert the image buffer to raw base64 (Ollama expects raw base64, not data URIs)
         const base64Image = imageBuffer.toString("base64");
 
@@ -61,6 +66,10 @@ Be concise but thorough in your description.`;
             headers: this.headers, timeout: 60000
         });
 
+        reportUsage?.({
+            provider: "ollama", model: response.data.model || this.model, kind: "image",
+            inputTokens: response.data.prompt_eval_count, outputTokens: response.data.eval_count
+        });
         const content = response.data.message.content;
         const isBankTransaction = content.startsWith("BANK_TRANSACTION:");
 

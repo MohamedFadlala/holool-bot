@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import type { UsageReporter } from "../storage/usage";
 import { Settings } from "../config/settings";
 import { ChatMessage, toDict } from "../storage/models";
 import { AIProvider, ImageDescription } from "./base";
@@ -20,11 +21,17 @@ export class GroqProvider implements AIProvider {
         this.client = new Groq({ apiKey: Settings.GROQ_CHAT_API_KEY, timeout: 45000, maxRetries: 0 });
     }
 
-    async chat(messages: ChatMessage[]): Promise<string> {
+    async chat(messages: ChatMessage[], reportUsage?: UsageReporter): Promise<string> {
+        const model = Settings.GROQ_CHAT_MODEL;
         const reply = await this.client.chat.completions.create({
-            model: Settings.GROQ_CHAT_MODEL,
+            model,
             messages: messages.map(toDict) as Groq.Chat.ChatCompletionMessageParam[],
             max_completion_tokens: 800
+        });
+        reportUsage?.({
+            provider: "groq", model: reply.model || model, inputTokens: reply.usage?.prompt_tokens,
+            outputTokens: reply.usage?.completion_tokens, totalTokens: reply.usage?.total_tokens,
+            costUsd: 0, costBasis: "free"
         });
         const content = reply.choices[0]?.message.content?.trim();
         if (!content) throw new Error("Groq returned an empty reply.");

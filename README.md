@@ -34,6 +34,12 @@ Voice notes use Groq Whisper Large v3 Turbo with any chat provider. holool-bot c
 
 Copy `.env.example` to `.env` and run `docker compose up --build -d`. Compose publishes the dashboard to host loopback on port 3000.
 
+## Chats and API usage
+
+Open **Chats & usage** to view stored WhatsApp conversations and filter recorded API usage by date. The dashboard reads input, output, and total tokens from provider responses. Expand a conversation to see its model usage and transcript. Groq Whisper is measured in audio seconds.
+
+OpenRouter's reported costs take precedence. Confirmed Free plans are recorded at $0.00. When a separate Groq voice key is used, Whisper estimates use Groq's published hourly rate and ten-second minimum. Unknown costs stay unpriced, and the dashboard does not reconstruct token usage for requests made before tracking was added. Provider tests are counted outside chats.
+
 ## Production
 
 GitHub Actions builds pull requests and deploys verified commits from `main` to [bot.holoolsoftware.com](https://bot.holoolsoftware.com). Nginx terminates TLS and authenticates the dashboard. The Node process listens on server loopback and accepts the public HTTPS origin through `HOLOOL_PUBLIC_ORIGIN`. The deploy script switches releases after a build and restores the previous version if the service fails its health check.

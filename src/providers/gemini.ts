@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI, Content } from "@google/generative-ai";
 import { AIProvider, ImageDescription } from "./base";
+import type { UsageReporter } from "../storage/usage";
 import { Settings } from "../config/settings";
 import { ChatMessage } from "../storage/models";
 
@@ -23,7 +24,7 @@ export class GeminiProvider implements AIProvider {
         console.log(`GeminiProvider initialized (model=${Settings.GEMINI_MODEL})`);
     }
 
-    async chat(messages: ChatMessage[]): Promise<string> {
+    async chat(messages: ChatMessage[], reportUsage?: UsageReporter): Promise<string> {
         const geminiMessages: Content[] = [];
         let systemContent = "";
         
@@ -45,8 +46,21 @@ export class GeminiProvider implements AIProvider {
             : this.model;
         const lastMessage = geminiMessages.at(-1);
         if (!lastMessage) throw new Error("No message to send to Gemini.");
-        const chat = model.startChat({ history: geminiMessages.slice(0, -1) });
+        // A bounded history can start on an assistant reply, which Gemini's chat SDK rejects.
+        const firstUser = geminiMessages.findIndex(message => message.role === "user");
+        const chat = model.startChat({ history: geminiMessages.slice(firstUser, -1) });
         const response = await chat.sendMessage(lastMessage.parts);
+        const usage = response.response.usageMetadata as
+            | (typeof response.response.usageMetadata & { thoughtsTokenCount?: number })
+            | undefined;
+        const outputTokens = usage?.totalTokenCount != null && usage.promptTokenCount != null
+            ? Math.max(0, usage.totalTokenCount - usage.promptTokenCount)
+            : usage?.candidatesTokenCount == null ? undefined
+                : usage.candidatesTokenCount + (usage.thoughtsTokenCount ?? 0);
+        reportUsage?.({
+            provider: "gemini", model: this.modelId, inputTokens: usage?.promptTokenCount,
+            outputTokens, totalTokens: usage?.totalTokenCount, costUsd: 0, costBasis: "free"
+        });
         const reply = response.response.text().trim();
         if (!reply) throw new Error("Gemini returned an empty reply.");
         return reply;

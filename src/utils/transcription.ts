@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { downloadContentFromMessage, WAMessage } from "@whiskeysockets/baileys";
 import Groq from "groq-sdk";
+import type { UsageReporter } from "../storage/usage";
 import { Settings } from "../config/settings";
 import { Logger } from "./logger";
 
@@ -24,10 +25,12 @@ export function isAudioMessage(msg: WAMessage): boolean {
     return Boolean(msg.message?.audioMessage);
 }
 
-export async function transcribeAudio(msg: WAMessage): Promise<string> {
+export async function transcribeAudio(msg: WAMessage, reportUsage?: UsageReporter): Promise<string> {
     const audio = msg.message?.audioMessage;
     if (!audio) throw new Error("The WhatsApp message has no audio.");
     const apiKey = Settings.groqVoiceKey;
+    const freePlan = Settings.GROQ_FREE_PLAN_CONFIRMED && apiKey === Settings.GROQ_CHAT_API_KEY;
+    const model = Settings.GROQ_MODEL;
     if (!apiKey) throw new Error("Configure a Groq API key for voice transcription.");
 
     const mime = audio.mimetype?.split(";", 1)[0].trim().toLowerCase();
@@ -41,9 +44,17 @@ export async function transcribeAudio(msg: WAMessage): Promise<string> {
         const groq = new Groq({ apiKey, timeout: 45000, maxRetries: 1 });
         const transcript = await groq.audio.transcriptions.create({
             file: createReadStream(audioPath),
-            model: Settings.GROQ_MODEL,
+            model,
             temperature: 0,
-            response_format: "json"
+            response_format: "verbose_json"
+        });
+        const duration = (transcript as { duration?: number }).duration ?? audio.seconds ?? undefined;
+        const hourlyRate = model === "whisper-large-v3-turbo" ? 0.04 : model === "whisper-large-v3" ? 0.111 : undefined;
+        const costUsd = freePlan ? 0
+            : hourlyRate != null && duration != null ? Math.max(10, duration) * hourlyRate / 3600 : undefined;
+        reportUsage?.({
+            provider: "groq", model, kind: "audio", audioSeconds: duration, costUsd,
+            costBasis: freePlan ? "free" : "estimate"
         });
         return transcript.text.trim();
     } finally {

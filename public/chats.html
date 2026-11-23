@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#081d40">
+  <title>Chats &amp; usage | holool-bot</title>
+  <link rel="icon" href="/assets/holool-mark.webp">
+  <link rel="stylesheet" href="/dashboard.css">
+  <link rel="stylesheet" href="/chats.css">
+  <script src="/chats.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a href="/" class="brand"><img src="/assets/holool-mark.webp" width="37" height="37" alt=""><span>holool<span class="brand-accent">-bot</span></span></a>
+    <nav aria-label="Workspace">
+      <a href="/"><span aria-hidden="true">▦</span>Bot setup</a>
+      <a href="/chats" class="current" aria-current="page"><span aria-hidden="true">▤</span>Chats &amp; usage</a>
+    </nav>
+    <footer><img src="/assets/holool-logo.webp" alt="Holool" width="64" height="56"><span>Holool<br><small>Software &amp; IT Solutions</small></span></footer>
+  </aside>
+  <main>
+    <header class="topbar"><span>Workspace <span class="separator">/</span> <strong>Chats &amp; usage</strong></span><a class="local" href="/">Bot setup</a></header>
+    <div class="workspace">
+      <header class="usage-title">
+        <div><h1>Chats &amp; usage</h1><p>Read WhatsApp conversations and see what each model used.</p></div>
+        <div class="report-controls">
+          <label for="range">Usage period</label>
+          <select id="range"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="all">All time</option></select>
+          <button class="report-button" id="refresh" type="button">Refresh</button>
+        </div>
+      </header>
+      <p role="alert" class="report-error" id="report-error" hidden></p>
+      <dl class="report-totals" aria-label="Usage totals">
+        <div><dt>Estimated API cost</dt><dd id="total-cost">—</dd><small id="cost-caption">USD</small></div>
+        <div><dt>Tokens</dt><dd id="total-tokens">—</dd><small id="token-caption">Input and output</small></div>
+        <div><dt>Tracked requests</dt><dd id="total-requests">—</dd><small id="request-caption">Across providers</small></div>
+        <div><dt>Audio transcribed</dt><dd id="total-audio">—</dd><small>Groq Whisper duration</small></div>
+      </dl>
+      <section class="panel report-panel" aria-labelledby="trend-title">
+        <div class="report-heading"><div><h2 id="trend-title">Daily usage</h2><p id="trend-caption">UTC dates</p></div>
+          <label class="view-choice">Show <select id="trend-metric"><option value="tokens">Tokens</option><option value="costUsd">API cost</option></select></label>
+        </div>
+        <p class="empty-state" id="trend-empty">Loading usage…</p>
+        <div class="usage-chart" id="trend-chart" role="list" aria-label="Daily usage from oldest to newest" hidden></div>
+      </section>
+      <section class="panel report-panel" aria-labelledby="models-title">
+        <div class="report-heading"><div><h2 id="models-title">Usage by model</h2><p>Token counts include the conversation context sent with each request.</p></div></div>
+        <div class="data-scroll"><table>
+          <thead><tr><th scope="col">Model</th><th scope="col">Requests</th><th scope="col">Input</th><th scope="col">Output</th><th scope="col">Total tokens</th><th scope="col">Audio</th><th scope="col">API cost</th></tr></thead>
+          <tbody id="model-rows"></tbody>
+        </table></div>
+        <p class="empty-state" id="models-empty">Loading models…</p>
+        <p class="report-note">Usage begins with this release. Earlier chats are visible, with token and cost totals available for new requests. OpenRouter-reported costs take precedence. Free plans show $0.00. Unpriced usage is marked as unknown.</p>
+      </section>
+      <section class="panel report-panel" aria-labelledby="chats-title">
+        <div class="report-heading"><div><h2 id="chats-title">WhatsApp chats</h2><p>Open a chat to see its transcript and usage by model.</p></div>
+          <form class="chat-search" id="search-form"><label for="search">Find a chat</label><input id="search" type="search" placeholder="Name or WhatsApp ID" maxlength="120"><button class="report-button" type="submit">Search</button><label for="chat-sort">Sort</label><select id="chat-sort"><option value="recent">Last active</option><option value="cost">Highest cost</option><option value="tokens">Most tokens</option></select></form>
+        </div>
+        <div class="data-scroll"><table>
+          <thead><tr><th scope="col">Chat</th><th scope="col">Last active</th><th scope="col">Requests</th><th scope="col">Total tokens</th><th scope="col">API cost</th></tr></thead>
+          <tbody id="chat-rows"></tbody>
+        </table></div>
+        <p class="empty-state" id="chats-empty">Loading chats…</p>
+        <div class="paging"><span id="chat-page" aria-live="polite"></span><button class="report-button" id="previous" type="button" disabled>Previous</button><button class="report-button" id="next" type="button" disabled>Next</button></div>
+      </section>
+    </div>
+  </main>
+  <dialog id="chat-dialog" aria-labelledby="detail-title">
+    <header class="report-heading"><div><h2 id="detail-title">Chat</h2><p id="detail-id"></p></div><form method="dialog"><button class="report-button">Close</button></form></header>
+    <p role="alert" class="report-error" id="detail-error" hidden></p>
+    <section class="detail-section"><h3>Usage in this period</h3><p id="detail-totals"></p>
+      <div class="data-scroll"><table>
+        <thead><tr><th scope="col">Model</th><th scope="col">Requests</th><th scope="col">Input</th><th scope="col">Output</th><th scope="col">Total tokens</th><th scope="col">Audio</th><th scope="col">API cost</th></tr></thead>
+        <tbody id="detail-models"></tbody>
+      </table></div>
+    </section>
+    <section class="detail-section"><h3>Conversation</h3><button id="older" class="report-button" type="button" hidden>Load older messages</button><ol class="transcript" id="transcript"></ol><p id="empty-transcript" class="empty-state" hidden>No messages are stored for this chat.</p></section>
+  </dialog>
+</body>
+</html>

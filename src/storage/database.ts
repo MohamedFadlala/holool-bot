@@ -59,6 +59,25 @@ export function initDb(): void {
 
         CREATE INDEX IF NOT EXISTS idx_chat_history_user_id
             ON chat_history(user_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_chat_history_user_id_message
+            ON chat_history(user_id, id);
+
+        CREATE TABLE IF NOT EXISTS model_usage (
+            id INTEGER PRIMARY KEY,
+            chat_id TEXT,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            total_tokens INTEGER,
+            audio_seconds REAL,
+            cost_usd REAL,
+            cost_basis TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_model_usage_time ON model_usage(created_at);
+        CREATE INDEX IF NOT EXISTS idx_model_usage_chat_time ON model_usage(chat_id, created_at);
 
         CREATE TABLE IF NOT EXISTS whatsapp_sessions (
             id TEXT PRIMARY KEY,
