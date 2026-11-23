@@ -5,6 +5,9 @@ import { toBuffer } from "qrcode";
 import { sessionManager } from "../whatsapp/session-manager";
 import { Settings } from "../config/settings";
 import { getProvider } from "../providers";
+import { groqModels } from "../providers/groq";
+import { freeRouter, isFreeOpenRouterModel, listFreeOpenRouterModels } from "../providers/openrouter";
+import { isAxiosError } from "axios";
 import { applyPrompt, providers, ProviderName, saveProvider, saveSetting, systemPrompt } from "./config";
 import { HttpError, readBody } from "./http";
 const whatsappSessionId = "default";
@@ -45,10 +48,36 @@ function snapshot() {
     return {
         prompt: systemPrompt,
         activeProvider: Settings.AI_PROVIDER,
+        groqFreePlanConfirmed: Settings.GROQ_FREE_PLAN_CONFIRMED,
         providers: Object.fromEntries(Object.entries(providers).map(([name, fields]) => [
             name, { model: Settings[fields.model], hasKey: Boolean(Settings[fields.key]) }
         ]))
     };
+}
+
+async function modelChoices() {
+    try {
+        return { openrouter: await listFreeOpenRouterModels(), groq: groqModels };
+    } catch {
+        return { openrouter: [freeRouter], groq: groqModels, catalogUnavailable: true };
+    }
+}
+
+async function testProvider() {
+    const label = Settings.AI_PROVIDER === "groq" ? "Groq" : "OpenRouter";
+    const configured = Settings.AI_PROVIDER === "groq" ? Settings.GROQ_CHAT_API_KEY : Settings.OPENROUTER_API_KEY;
+    if (!configured) throw new HttpError(400, `Save an API key for ${label} first.`);
+    try {
+        await getProvider().chat([{ role: "user", content: "Reply with one word: ready." }]);
+        return { message: `${label} generated a test reply.` };
+    } catch (error) {
+        const status = isAxiosError(error) ? error.response?.status : (error as { status?: number })?.status;
+        if (status === 401 || status === 403) throw new HttpError(502, `${label} rejected the key or model access. Check your key and account.`);
+        if (status === 402) throw new HttpError(502, `${label} declined this request because of its billing or credit rules.`);
+        if (status === 429) throw new HttpError(429, `${label} is rate-limiting this model. Try again later or select another free model.`);
+        if (status === 404) throw new HttpError(502, `${label} could not serve this model. Select another free model.`);
+        throw new HttpError(502, `${label} could not generate a test reply. Try another free model.`);
+    }
 }
 
 async function editSettings(req: IncomingMessage, res: ServerResponse, path: string) {
@@ -73,16 +102,22 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
             const model = field("model");
             if (!model || model.length > 256) throw new HttpError(400, "Enter a valid model ID.");
             const apiKey = field("apiKey") || Settings[providers[provider].key];
-            if (!apiKey && provider !== "ollama") throw new HttpError(400, "Enter an API key for this provider.");
-            saveProvider({ provider, model, apiKey });
+            if (!apiKey) throw new HttpError(400, "Enter an API key for this provider.");
+            const freePlanConfirmed = data.freePlanConfirmed === true;
+            if (provider === "groq") {
+                if (!groqModels.some(option => option.id === model)) throw new HttpError(400, "Choose a Groq Free-plan model.");
+                if (!freePlanConfirmed) throw new HttpError(400, "Confirm that this Groq key belongs to a Free-plan organization.");
+            } else if (!isFreeOpenRouterModel(model)) {
+                throw new HttpError(400, "Choose a free OpenRouter model.");
+            }
+            saveProvider({ provider, model, apiKey, freePlanConfirmed });
             break;
         }
         case "/api/whatsapp/connect":
             void sessionManager.startSession(whatsappSessionId);
             return json(res, whatsappStatus(), 202);
         case "/api/provider/test":
-            if (!await getProvider().healthCheck()) throw new HttpError(502, "Provider check failed. Check the saved credentials and model.");
-            return json(res, { message: "The active AI provider responded successfully." });
+            return json(res, await testProvider());
         default:
             throw new HttpError(404, "Page not found.");
     }
@@ -106,6 +141,7 @@ export function startDashboard() {
             const url = new URL(req.url || "/", "http://localhost");
             const path = url.pathname;
             if (req.method === "GET" && path === "/api/settings") return json(res, snapshot());
+            if (req.method === "GET" && path === "/api/provider/models") return json(res, await modelChoices());
             if (req.method === "GET" && path === "/api/whatsapp") return json(res, whatsappStatus());
             if (req.method === "GET" && path === "/api/whatsapp/qr.png") {
                 const status = sessionManager.getStatus(whatsappSessionId);

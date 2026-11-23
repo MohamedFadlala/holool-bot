@@ -1,11 +1,13 @@
 const $ = (selector, parent = document) => parent.querySelector(selector);
-const names = { ollama: "Ollama", openrouter: "OpenRouter", gemini: "Gemini" };
+const names = { openrouter: "OpenRouter Free", groq: "Groq Free plan" };
 const promptForm = $("#prompt");
 const providerForm = $("#provider");
 const prompt = $("#system-prompt");
 const model = $("#model");
 const apiKey = $("#api-key");
+const groqFree = $("#groq-free");
 const drafts = new Map();
+let catalog;
 let settings;
 let chosen;
 
@@ -29,7 +31,8 @@ function feedback(form, message, failed = false) {
 
 function updateSummary() {
   $("#prompt-state").textContent = settings.prompt ? "Ready" : "Needs instructions";
-  $("#provider-state").textContent = names[settings.activeProvider] || "Choose a provider";
+  const active = settings.providers[settings.activeProvider];
+  $("#provider-state").textContent = active?.hasKey ? names[settings.activeProvider] : "API key needed";
 }
 
 function selectProvider(name) {
@@ -39,13 +42,21 @@ function selectProvider(name) {
   for (const button of providerForm.querySelectorAll("[data-provider]")) {
     button.setAttribute("aria-pressed", String(button.dataset.provider === name));
   }
-  model.value = draft?.model ?? saved.model;
+  const choices = catalog[name];
+  model.replaceChildren(...choices.map(option => new Option(option.name, option.id)));
+  const preferred = draft?.model || saved.model;
+  if (choices.some(option => option.id === preferred)) model.value = preferred;
   apiKey.value = draft?.key ?? "";
   apiKey.placeholder = saved.hasKey ? "Saved · enter a new key to replace" : "Enter API key";
-  apiKey.required = !saved.hasKey && name !== "ollama";
-  $("#provider-hint").textContent = name === "ollama"
-    ? "Ollama Cloud requires an API key. A local Ollama server can run without one."
-    : "Use a model ID from " + names[name] + ".";
+  apiKey.required = !saved.hasKey;
+  $("#groq-plan").hidden = name !== "groq";
+  groqFree.required = name === "groq";
+  groqFree.checked = draft?.freePlanConfirmed ?? settings.groqFreePlanConfirmed;
+  $("#provider-hint").textContent = name === "groq"
+    ? "Check your organization’s plan in Groq Console → Settings → Billing."
+    : catalog.catalogUnavailable
+      ? "The model catalog is temporarily unavailable. You can still use the Free Models Router."
+      : "OpenRouter free models have usage limits. Automatic picks an available free model.";
 }
 
 function countPrompt() {
@@ -79,7 +90,7 @@ promptForm.addEventListener("submit", event => {
 
 for (const button of providerForm.querySelectorAll("[data-provider]")) {
   button.addEventListener("click", () => {
-    drafts.set(chosen, { model: model.value, key: apiKey.value });
+    drafts.set(chosen, { model: model.value, key: apiKey.value, freePlanConfirmed: groqFree.checked });
     selectProvider(button.dataset.provider);
     feedback(providerForm, "");
   });
@@ -88,7 +99,12 @@ for (const button of providerForm.querySelectorAll("[data-provider]")) {
 providerForm.addEventListener("submit", event => {
   event.preventDefault();
   action(providerForm, async () => {
-    settings = await request("provider", { provider: chosen, model: model.value, apiKey: apiKey.value });
+    settings = await request("provider", {
+      provider: chosen,
+      model: model.value,
+      apiKey: apiKey.value,
+      freePlanConfirmed: chosen === "groq" && groqFree.checked
+    });
     drafts.delete(chosen);
     selectProvider(chosen);
     updateSummary();
@@ -174,11 +190,12 @@ function updateNavigation() {
 window.addEventListener("hashchange", updateNavigation);
 updateNavigation();
 
-request("settings").then(result => {
+Promise.all([request("settings"), request("provider/models")]).then(([result, choices]) => {
   settings = result;
+  catalog = choices;
   prompt.value = settings.prompt;
   countPrompt();
-  selectProvider(Object.hasOwn(names, settings.activeProvider) ? settings.activeProvider : "ollama");
+  selectProvider(Object.hasOwn(names, settings.activeProvider) ? settings.activeProvider : "openrouter");
   updateSummary();
   for (const fields of document.querySelectorAll("fieldset")) fields.disabled = false;
 }).catch(error => {

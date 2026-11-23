@@ -46,18 +46,18 @@
       </form>
 
       <form class="panel" id="provider">
-        <div class="panel-head"><span class="tile-icon" aria-hidden="true">✦</span><div><h2>AI provider</h2><p>Choose the model that generates replies and store its API key.</p></div></div>
+        <div class="panel-head"><span class="tile-icon" aria-hidden="true">✦</span><div><h2>AI provider</h2><p>Choose a free cloud model for WhatsApp replies.</p></div></div>
         <fieldset disabled>
           <div class="provider-options" aria-label="AI provider" role="group">
-            <button type="button" data-provider="ollama" aria-pressed="false">Ollama</button>
-            <button type="button" data-provider="openrouter" aria-pressed="false">OpenRouter</button>
-            <button type="button" data-provider="gemini" aria-pressed="false">Gemini</button>
+            <button type="button" data-provider="openrouter" aria-pressed="false">OpenRouter Free</button>
+            <button type="button" data-provider="groq" aria-pressed="false">Groq Free plan</button>
           </div>
           <div class="fields">
-            <div><label for="model">Model ID</label><input id="model" name="model" maxlength="256" required></div>
+            <div><label for="model">Free cloud model</label><select id="model" name="model" aria-describedby="provider-hint" required></select></div>
             <div><label for="api-key">API key</label><input id="api-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false"></div>
           </div>
           <p class="hint" id="provider-hint"></p>
+          <label class="plan-confirmation" id="groq-plan" hidden><input id="groq-free" type="checkbox"> This key belongs to a Groq Free-plan organization.</label>
           <div class="actions"><p class="feedback" role="status"></p><button class="secondary" type="button" data-test>Test active provider</button><button>Save and activate</button></div>
         </fieldset>
       </form>

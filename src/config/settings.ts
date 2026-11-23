@@ -7,7 +7,7 @@ dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
 
 export class Settings {
     // --- AI Provider ---
-    static AI_PROVIDER = process.env.AI_PROVIDER || "ollama";
+    static AI_PROVIDER = process.env.AI_PROVIDER || "openrouter";
 
     // Ollama
     static OLLAMA_HOST = process.env.OLLAMA_HOST || "https://ollama.com";
@@ -16,10 +16,13 @@ export class Settings {
 
     // OpenRouter
     static OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
-    static OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001";
+    static OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openrouter/free";
 
     // Groq (for audio transcription)
     static GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+    static GROQ_CHAT_API_KEY = process.env.GROQ_CHAT_API_KEY || Settings.GROQ_API_KEY;
+    static GROQ_CHAT_MODEL = process.env.GROQ_CHAT_MODEL || "qwen/qwen3.8-27b";
+    static GROQ_FREE_PLAN_CONFIRMED = process.env.GROQ_FREE_PLAN_CONFIRMED === "true";
     static GROQ_MODEL = process.env.GROQ_MODEL || "whisper-large-v3-turbo";
 
     // Gemini
@@ -43,6 +46,9 @@ export class Settings {
         }
         if (this.AI_PROVIDER === "openrouter" && !this.OPENROUTER_API_KEY) {
             errors.push("OPENROUTER_API_KEY is required when AI_PROVIDER=openrouter");
+        }
+        if (this.AI_PROVIDER === "groq" && (!this.GROQ_CHAT_API_KEY || !this.GROQ_FREE_PLAN_CONFIRMED)) {
+            errors.push("Groq requires an API key from a Free-plan organization.");
         }
         if (this.AI_PROVIDER === "gemini" && !this.GEMINI_API_KEY) {
             errors.push("GEMINI_API_KEY is required when AI_PROVIDER=gemini");

@@ -1,11 +1,12 @@
 import { Settings } from "../config/settings";
+import { isFreeOpenRouterModel, freeRouter } from "../providers/openrouter";
+import { groqModels } from "../providers/groq";
 import { SYSTEM_PROMPT } from "../config/system-prompt";
 import { getConnection } from "../storage/database";
 
 export const providers = {
-    ollama: { key: "OLLAMA_API_KEY", model: "OLLAMA_MODEL" },
     openrouter: { key: "OPENROUTER_API_KEY", model: "OPENROUTER_MODEL" },
-    gemini: { key: "GEMINI_API_KEY", model: "GEMINI_MODEL" }
+    groq: { key: "GROQ_CHAT_API_KEY", model: "GROQ_CHAT_MODEL" }
 } as const;
 
 export type ProviderName = keyof typeof providers;
@@ -28,11 +29,11 @@ export function applyPrompt(value: string) {
     systemPrompt = value;
 }
 
-export function applyProvider(value: { provider: ProviderName; model: string; apiKey: string }) {
+export function applyProvider(value: { provider: ProviderName; model: string; apiKey: string; freePlanConfirmed?: boolean }) {
     const fields = providers[value.provider];
     Settings[fields.model] = value.model;
     Settings[fields.key] = value.apiKey;
-    Settings.AI_PROVIDER = value.provider;
+    if (value.provider === "groq") Settings.GROQ_FREE_PLAN_CONFIRMED = value.freePlanConfirmed === true;
 }
 
 export function loadSettings() {
@@ -42,10 +43,18 @@ export function loadSettings() {
     const rows = getConnection().prepare("SELECT name, value FROM holool_settings").all() as {name: string; value: string}[];
     for (const row of rows) {
         if (row.name === "prompt") applyPrompt(JSON.parse(row.value));
-        if (row.name.startsWith("provider:")) applyProvider(JSON.parse(row.value));
+        if (row.name.startsWith("provider:")) {
+            const provider = row.name.slice("provider:".length);
+            if (Object.hasOwn(providers, provider)) applyProvider(JSON.parse(row.value));
+        }
     }
     const active = rows.find(row => row.name === "activeProvider");
-    if (active) Settings.AI_PROVIDER = JSON.parse(active.value);
+    const selected = active ? JSON.parse(active.value) : Settings.AI_PROVIDER;
+    Settings.AI_PROVIDER = selected === "groq" && Settings.GROQ_CHAT_API_KEY &&
+        Settings.GROQ_FREE_PLAN_CONFIRMED && groqModels.some(model => model.id === Settings.GROQ_CHAT_MODEL)
+        ? "groq"
+        : "openrouter";
+    if (!isFreeOpenRouterModel(Settings.OPENROUTER_MODEL)) Settings.OPENROUTER_MODEL = freeRouter.id;
 }
 
 export function saveProvider(value: Parameters<typeof applyProvider>[0]) {
@@ -54,4 +63,5 @@ export function saveProvider(value: Parameters<typeof applyProvider>[0]) {
         writeSetting("activeProvider", value.provider);
     })();
     applyProvider(value);
+    Settings.AI_PROVIDER = value.provider;
 }
