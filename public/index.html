@@ -43,12 +43,26 @@
           <label for="system-prompt">Instructions</label>
           <textarea id="system-prompt" name="prompt" rows="7" maxlength="32000" dir="auto" required spellcheck="false"></textarea>
           <div class="actions"><p class="feedback" role="status"></p><output id="prompt-length" for="system-prompt"></output><button>Save prompt</button></div>
+          <div class="prompt-preview">
+            <label for="preview-message">Test a customer message</label>
+            <div class="preview-actions">
+              <input id="preview-message" maxlength="2000" placeholder="What products do you offer?" dir="auto">
+              <button class="preview-button" id="preview-prompt" type="button">Preview saved prompt</button>
+            </div>
+            <p class="hint">Uses the active model and the saved prompt. The preview does not send a WhatsApp message.</p>
+            <p id="prompt-preview-result" dir="auto" aria-live="polite" hidden></p>
+          </div>
         </fieldset>
       </form>
 
       <form class="panel" id="provider">
         <div class="panel-head"><span class="tile-icon" aria-hidden="true">✦</span><div><h2>AI provider</h2><p>Choose a free cloud model for WhatsApp replies.</p></div></div>
         <fieldset disabled>
+          <div class="active-model" aria-live="polite">
+            <div><span>Active chat model</span><strong id="active-model-name">Loading…</strong></div>
+            <code id="active-model-id"></code>
+            <p id="active-model-note" hidden></p>
+          </div>
           <div class="provider-options" aria-label="AI provider" role="group">
             <button type="button" data-provider="openrouter" aria-pressed="false">OpenRouter Free</button>
             <button type="button" data-provider="groq" aria-pressed="false">Groq Free plan</button>
@@ -59,6 +73,7 @@
             <div><label for="api-key">API key</label><input id="api-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false"></div>
           </div>
           <p class="hint" id="provider-hint"></p>
+          <p class="hint" id="model-draft" hidden>Save and activate to switch the model used for replies.</p>
           <label class="plan-confirmation" id="free-plan" hidden><input id="free-confirmed" type="checkbox"> <span id="free-plan-label"></span></label>
           <p class="hint" id="voice-status"></p>
           <div class="actions"><p class="feedback" role="status"></p><button class="secondary" type="button" data-test>Test active provider</button><button class="secondary" id="save-voice" type="submit" value="voice" hidden>Save Groq key for voice</button><button type="submit">Save and activate</button></div>

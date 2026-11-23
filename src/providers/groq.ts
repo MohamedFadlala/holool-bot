@@ -12,17 +12,18 @@ export const groqModels = [
 
 export class GroqProvider implements AIProvider {
     private client: Groq;
+    private model = Settings.GROQ_CHAT_MODEL;
 
     constructor() {
         if (!Settings.GROQ_FREE_PLAN_CONFIRMED || !Settings.GROQ_CHAT_API_KEY ||
-            !groqModels.some(model => model.id === Settings.GROQ_CHAT_MODEL)) {
+            !groqModels.some(model => model.id === this.model)) {
             throw new Error("Configure Groq with a key from a Free-plan organization.");
         }
         this.client = new Groq({ apiKey: Settings.GROQ_CHAT_API_KEY, timeout: 45000, maxRetries: 0 });
     }
 
     async chat(messages: ChatMessage[], reportUsage?: UsageReporter): Promise<string> {
-        const model = Settings.GROQ_CHAT_MODEL;
+        const model = this.model;
         const reply = await this.client.chat.completions.create({
             model,
             messages: messages.map(toDict) as Groq.Chat.ChatCompletionMessageParam[],

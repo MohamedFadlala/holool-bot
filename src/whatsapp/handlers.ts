@@ -4,7 +4,7 @@ import { ChatRepository } from "../storage/repository";
 import { getProvider } from "../providers";
 import { Logger } from "../utils/logger";
 import { Settings } from "../config/settings";
-import { systemPrompt } from "../admin/config";
+import { systemPrompt, systemPromptRevision } from "../admin/config";
 import { ChatMessage } from "../storage/models";
 import { isAudioMessage, transcribeAudio } from "../utils/transcription";
 import { isImageMessage, downloadImage } from "../utils/image-utils";
@@ -140,40 +140,29 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                 // Add the user message to history (text only — no images stored)
                 chatRepo.addMessage(jid, "user", historyText);
 
-                // Fetch conversation history
-                const history = chatRepo.getHistory(jid, Settings.MAX_HISTORY_MESSAGES);
+                await wsock.sendPresenceUpdate("composing", jid);
+                if (!isActive()) return;
 
-                // Prepare provider messages with system prompt prepended
+                // Read the active provider and prompt together after the last await before generation.
+                const promptRevision = systemPromptRevision;
                 const messagesForProvider: ChatMessage[] = [
                     { role: "system", content: systemPrompt },
-                    ...history.map(h => ({
-                        role: h.role as ChatMessage["role"],
-                        content: h.content
-                    }))
+                    ...chatRepo.getHistory(jid, Settings.MAX_HISTORY_MESSAGES, promptRevision)
                 ];
-
-                // Show typing indicator now — debounce is done, user is about to get a reply
-                await wsock.sendPresenceUpdate('composing', jid);
-
-                if (!isActive()) return;
-                const provider = getProvider();
                 let aiResponse = "";
                 
                 try {
-                    aiResponse = await provider.chat(messagesForProvider, reportUsage);
+                    aiResponse = await getProvider().chat(messagesForProvider, reportUsage);
                 } catch (error: any) {
                     Logger.error(`[${sessionId}] AI Provider Error: ${error.message}`);
                     aiResponse = "Sorry, I am having trouble processing your request right now. Please try again later.";
                 }
 
                 if (!isActive()) return;
-                // Add assistant message to history
-                chatRepo.addMessage(jid, "assistant", aiResponse);
-
-                // Send reply
-                await wsock.sendPresenceUpdate('paused', jid);
+                await wsock.sendPresenceUpdate("paused", jid);
                 if (!isActive()) return;
                 await wsock.sendMessage(jid, { text: aiResponse }, { quoted: lastMsg });
+                chatRepo.addMessage(jid, "assistant", aiResponse, promptRevision);
 
             } catch (error) {
                 Logger.error(`[${sessionId}] Error in buffered response: ${error}`);

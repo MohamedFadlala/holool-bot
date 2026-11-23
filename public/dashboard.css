@@ -63,6 +63,18 @@ input::placeholder { color:#60738e; }
 #load-error { margin-bottom:16px; }
 output,.hint { font-size:12px; color:var(--muted); }
 .hint { margin-top:8px; }
+.active-model { display:grid; gap:4px; border:1px solid #c4def8; border-radius:10px; padding:10px 13px; margin:0 0 16px; background:#eff7ff; }
+.active-model div { display:flex; gap:5px 12px; flex-wrap:wrap; align-items:baseline; }
+.active-model span,.active-model p { color:var(--muted); font-size:12px; }
+.active-model strong { font-size:16px; }
+.active-model code { color:#20527e; font-size:12px; overflow-wrap:anywhere; }
+.prompt-preview { border-top:1px solid #e1eaf3; margin-top:16px; padding-top:13px; }
+.preview-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.preview-actions input { flex:1 1 220px; }
+.preview-button { font:inherit; font-weight:600; padding:7px 11px; border:1px solid #cad8e9; background:#fff; color:#20527e; border-radius:7px; }
+.preview-button:hover { background:#edf5ff; }
+#prompt-preview-result { margin-top:9px; padding:9px 11px; border-radius:7px; background:#f1f7ff; white-space:pre-wrap; overflow-wrap:anywhere; }
+#model-draft { color:#805916; }
 .plan-confirmation { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; }
 .provider-options { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:17px; }
 .provider-options button { padding:7px 12px; border-radius:6px; border:1px solid #d9e3f0; background:white; color:#304b71; font-weight:600; }

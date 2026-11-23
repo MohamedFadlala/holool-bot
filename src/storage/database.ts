@@ -53,6 +53,7 @@ export function initDb(): void {
             user_id TEXT NOT NULL,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
+            prompt_revision INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(user_id)
         );
@@ -86,5 +87,10 @@ export function initDb(): void {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `);
+    db.transaction(() => {
+        if (!db.prepare("SELECT 1 FROM pragma_table_info('chat_history') WHERE name = 'prompt_revision'").get()) {
+            db.exec("ALTER TABLE chat_history ADD COLUMN prompt_revision INTEGER NOT NULL DEFAULT 0");
+        }
+    }).immediate();
     console.log(`Database initialized at ${DB_PATH}`);
 }

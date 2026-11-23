@@ -14,6 +14,7 @@ export const providers = {
 export type ProviderName = keyof typeof providers;
 
 export let systemPrompt = SYSTEM_PROMPT;
+export let systemPromptRevision = 0;
 
 function writeSetting(name: string, value: unknown) {
     getConnection().prepare(`
@@ -22,13 +23,15 @@ function writeSetting(name: string, value: unknown) {
     `).run(name, JSON.stringify(value));
 }
 
-export function saveSetting<T>(name: string, value: T, apply: (value: T) => void) {
-    writeSetting(name, value);
-    apply(value);
-}
-
-export function applyPrompt(value: string) {
-    systemPrompt = value;
+export function savePrompt(prompt: string) {
+    if (prompt === systemPrompt) return;
+    const revision = systemPromptRevision + 1;
+    getConnection().transaction(() => {
+        writeSetting("prompt", prompt);
+        writeSetting("promptRevision", revision);
+    })();
+    systemPrompt = prompt;
+    systemPromptRevision = revision;
 }
 
 export function applyProvider(value: { provider: ProviderName; model: string; apiKey: string; freePlanConfirmed?: boolean }) {
@@ -44,8 +47,12 @@ export function loadSettings() {
         CREATE TABLE IF NOT EXISTS holool_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
     `);
     const rows = getConnection().prepare("SELECT name, value FROM holool_settings").all() as {name: string; value: string}[];
+    const prompt = rows.find(row => row.name === "prompt");
+    const revision = rows.find(row => row.name === "promptRevision");
+    systemPrompt = prompt ? JSON.parse(prompt.value) : SYSTEM_PROMPT;
+    // Older custom prompts have no revision. Exclude assistant replies whose prompt is unknown.
+    systemPromptRevision = revision ? JSON.parse(revision.value) : systemPrompt === SYSTEM_PROMPT ? 0 : 1;
     for (const row of rows) {
-        if (row.name === "prompt") applyPrompt(JSON.parse(row.value));
         if (row.name.startsWith("provider:")) {
             const provider = row.name.slice("provider:".length);
             if (Object.hasOwn(providers, provider)) applyProvider(JSON.parse(row.value));

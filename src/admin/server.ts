@@ -11,7 +11,7 @@ import { geminiModels } from "../providers/gemini";
 import { groqModels } from "../providers/groq";
 import { freeRouter, isFreeOpenRouterModel, listFreeOpenRouterModels } from "../providers/openrouter";
 import { isAxiosError } from "axios";
-import { applyPrompt, providers, ProviderName, saveProvider, saveSetting, systemPrompt } from "./config";
+import { providers, ProviderName, savePrompt, saveProvider, systemPrompt } from "./config";
 import { HttpError, readBody } from "./http";
 const whatsappSessionId = "default";
 
@@ -56,6 +56,7 @@ function snapshot() {
     return {
         prompt: systemPrompt,
         activeProvider: Settings.AI_PROVIDER,
+        activeModel: Settings[providers[Settings.AI_PROVIDER as ProviderName].model],
         groqFreePlanConfirmed: Settings.GROQ_FREE_PLAN_CONFIRMED,
         geminiFreePlanConfirmed: Settings.GEMINI_FREE_PLAN_CONFIRMED,
         voiceConfigured: Boolean(Settings.groqVoiceKey),
@@ -73,14 +74,25 @@ async function modelChoices() {
     }
 }
 
-async function testProvider() {
+async function testProvider(sample = "") {
     const name = Settings.AI_PROVIDER as ProviderName;
     const label = { groq: "Groq", gemini: "Gemini", openrouter: "OpenRouter" }[name];
     const configured = Settings[providers[name].key];
     if (!configured) throw new HttpError(400, `Save an API key for ${label} first.`);
     try {
-        await getProvider().chat([{ role: "user", content: "Reply with one word: ready." }], usageReporter(null));
-        return { message: `${label} generated a test reply.` };
+        const activeModel = Settings[providers[name].model];
+        const report = usageReporter(null);
+        let responseModel = activeModel;
+        const reply = await getProvider().chat([
+            { role: "system", content: systemPrompt },
+            { role: "user", content: sample || "Reply with one word: ready." }
+        ], usage => {
+            responseModel = usage.model || activeModel;
+            report(usage);
+        });
+        return { message: `${label} generated a test reply with ${responseModel}.`,
+            ...(sample ? { reply } : {}) };
+
     } catch (error) {
         const status = isAxiosError(error) ? error.response?.status : (error as { status?: number })?.status;
         if (status === 401 || status === 403) throw new HttpError(502, `${label} rejected the key or model access. Check your key and account.`);
@@ -103,7 +115,7 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
         case "/api/prompt": {
             const prompt = field("prompt");
             if (!prompt || prompt.length > 32000) throw new HttpError(400, "Enter a system prompt of up to 32,000 characters.");
-            saveSetting("prompt", prompt, applyPrompt);
+            savePrompt(prompt);
             break;
         }
         case "/api/provider": {
@@ -134,6 +146,11 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
         case "/api/whatsapp/connect":
             void sessionManager.startSession(whatsappSessionId);
             return json(res, whatsappStatus(), 202);
+        case "/api/prompt/preview": {
+            const sample = field("sample");
+            if (!sample || sample.length > 2000) throw new HttpError(400, "Enter a sample message of up to 2,000 characters.");
+            return json(res, await testProvider(sample));
+        }
         case "/api/provider/test":
             return json(res, await testProvider());
         default:

@@ -28,15 +28,16 @@ export class ChatRepository {
         return row ? row.cnt : 0;
     }
 
-    getHistory(userId: string, maxMessages: number = 20): ChatMessage[] {
+    getHistory(userId: string, maxMessages: number = 20, promptRevision: number | null = null): ChatMessage[] {
         const db = getConnection();
         const rows = db.prepare(`
             SELECT role, content, created_at
             FROM chat_history
             WHERE user_id = ?
+              AND (? IS NULL OR role = 'user' OR (role = 'assistant' AND prompt_revision = ?))
             ORDER BY created_at DESC, id DESC
             LIMIT ?
-        `).all(userId, maxMessages) as { role: string; content: string; created_at: string }[];
+        `).all(userId, promptRevision, promptRevision, maxMessages) as { role: string; content: string; created_at: string }[];
         
         // Reverse to get chronological order
         rows.reverse();
@@ -47,10 +48,10 @@ export class ChatRepository {
         }));
     }
 
-    addMessage(userId: string, role: "system" | "user" | "assistant", content: string): void {
+    addMessage(userId: string, role: "system" | "user" | "assistant", content: string, promptRevision = 0): void {
         const db = getConnection();
-        const stmt = db.prepare("INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)");
-        stmt.run(userId, role, content);
+        db.prepare("INSERT INTO chat_history (user_id, role, content, prompt_revision) VALUES (?, ?, ?, ?)")
+            .run(userId, role, content, promptRevision);
     }
 
     clearHistory(userId: string): void {

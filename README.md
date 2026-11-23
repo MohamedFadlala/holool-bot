@@ -21,6 +21,8 @@ Open [Bot setup](http://127.0.0.1:3000).
 
 Use **Disconnect WhatsApp** to forget the saved device session. Reconnecting requires a new QR scan.
 
+The **Active chat model** shows what the running bot will use for new replies. Use **Preview saved prompt** to try the saved instructions with that model without sending a WhatsApp message. When the system prompt changes, new replies use the customer's prior messages and assistant replies generated under the new prompt. The Chats dashboard keeps the full stored transcript.
+
 The dashboard starts before you enter any API keys. Saved settings and WhatsApp sessions live in SQLite. holool-bot reconnects a saved WhatsApp session when it starts. The dashboard shows whether a provider key is saved. Leave its field blank to keep the saved key, or enter a replacement to rotate it.
 
 - **OpenRouter Free** loads the current selection of free chat models. Its **Automatic** option picks an available free model. Enter an [OpenRouter API key](https://openrouter.ai/settings/keys).
