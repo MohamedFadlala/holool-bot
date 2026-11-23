@@ -1,12 +1,14 @@
 import { Settings } from "../config/settings";
 import { isFreeOpenRouterModel, freeRouter } from "../providers/openrouter";
+import { geminiModels } from "../providers/gemini";
 import { groqModels } from "../providers/groq";
 import { SYSTEM_PROMPT } from "../config/system-prompt";
 import { getConnection } from "../storage/database";
 
 export const providers = {
     openrouter: { key: "OPENROUTER_API_KEY", model: "OPENROUTER_MODEL" },
-    groq: { key: "GROQ_CHAT_API_KEY", model: "GROQ_CHAT_MODEL" }
+    groq: { key: "GROQ_CHAT_API_KEY", model: "GROQ_CHAT_MODEL" },
+    gemini: { key: "GEMINI_API_KEY", model: "GEMINI_MODEL" }
 } as const;
 
 export type ProviderName = keyof typeof providers;
@@ -34,6 +36,7 @@ export function applyProvider(value: { provider: ProviderName; model: string; ap
     Settings[fields.model] = value.model;
     Settings[fields.key] = value.apiKey;
     if (value.provider === "groq") Settings.GROQ_FREE_PLAN_CONFIRMED = value.freePlanConfirmed === true;
+    if (value.provider === "gemini") Settings.GEMINI_FREE_PLAN_CONFIRMED = value.freePlanConfirmed === true;
 }
 
 export function loadSettings() {
@@ -50,18 +53,20 @@ export function loadSettings() {
     }
     const active = rows.find(row => row.name === "activeProvider");
     const selected = active ? JSON.parse(active.value) : Settings.AI_PROVIDER;
-    Settings.AI_PROVIDER = selected === "groq" && Settings.GROQ_CHAT_API_KEY &&
-        Settings.GROQ_FREE_PLAN_CONFIRMED && groqModels.some(model => model.id === Settings.GROQ_CHAT_MODEL)
-        ? "groq"
-        : "openrouter";
+    Settings.AI_PROVIDER = "openrouter";
+    if (selected === "groq" && Settings.GROQ_CHAT_API_KEY && Settings.GROQ_FREE_PLAN_CONFIRMED &&
+        groqModels.some(model => model.id === Settings.GROQ_CHAT_MODEL)) Settings.AI_PROVIDER = "groq";
+    if (selected === "gemini" && Settings.GEMINI_API_KEY && Settings.GEMINI_FREE_PLAN_CONFIRMED &&
+        geminiModels.some(model => model.id === Settings.GEMINI_MODEL)) Settings.AI_PROVIDER = "gemini";
+    if (!geminiModels.some(model => model.id === Settings.GEMINI_MODEL)) Settings.GEMINI_MODEL = geminiModels[0].id;
     if (!isFreeOpenRouterModel(Settings.OPENROUTER_MODEL)) Settings.OPENROUTER_MODEL = freeRouter.id;
 }
 
-export function saveProvider(value: Parameters<typeof applyProvider>[0]) {
+export function saveProvider(value: Parameters<typeof applyProvider>[0], activate = true) {
     getConnection().transaction(() => {
         writeSetting("provider:" + value.provider, value);
-        writeSetting("activeProvider", value.provider);
+        if (activate) writeSetting("activeProvider", value.provider);
     })();
     applyProvider(value);
-    Settings.AI_PROVIDER = value.provider;
+    if (activate) Settings.AI_PROVIDER = value.provider;
 }

@@ -51,14 +51,16 @@
           <div class="provider-options" aria-label="AI provider" role="group">
             <button type="button" data-provider="openrouter" aria-pressed="false">OpenRouter Free</button>
             <button type="button" data-provider="groq" aria-pressed="false">Groq Free plan</button>
+            <button type="button" data-provider="gemini" aria-pressed="false">Gemini Free tier</button>
           </div>
           <div class="fields">
             <div><label for="model">Free cloud model</label><select id="model" name="model" aria-describedby="provider-hint" required></select></div>
             <div><label for="api-key">API key</label><input id="api-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false"></div>
           </div>
           <p class="hint" id="provider-hint"></p>
-          <label class="plan-confirmation" id="groq-plan" hidden><input id="groq-free" type="checkbox"> This key belongs to a Groq Free-plan organization.</label>
-          <div class="actions"><p class="feedback" role="status"></p><button class="secondary" type="button" data-test>Test active provider</button><button>Save and activate</button></div>
+          <label class="plan-confirmation" id="free-plan" hidden><input id="free-confirmed" type="checkbox"> <span id="free-plan-label"></span></label>
+          <p class="hint" id="voice-status"></p>
+          <div class="actions"><p class="feedback" role="status"></p><button class="secondary" type="button" data-test>Test active provider</button><button class="secondary" id="save-voice" type="submit" value="voice" hidden>Save Groq key for voice</button><button type="submit">Save and activate</button></div>
         </fieldset>
       </form>
 

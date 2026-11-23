@@ -3,12 +3,21 @@ import { AIProvider, ImageDescription } from "./base";
 import { Settings } from "../config/settings";
 import { ChatMessage } from "../storage/models";
 
+export const geminiModels = [
+    { id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash-Lite" },
+    { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash-Lite" }
+];
+
 export class GeminiProvider implements AIProvider {
     private genai: GoogleGenerativeAI;
     private model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]>;
     private modelId = Settings.GEMINI_MODEL;
 
     constructor() {
+        if (!Settings.GEMINI_API_KEY || !Settings.GEMINI_FREE_PLAN_CONFIRMED ||
+            !geminiModels.some(model => model.id === this.modelId)) {
+            throw new Error("Configure Gemini with a key from a Free-tier project.");
+        }
         this.genai = new GoogleGenerativeAI(Settings.GEMINI_API_KEY);
         this.model = this.genai.getGenerativeModel({ model: this.modelId }, { timeout: 15000 });
         console.log(`GeminiProvider initialized (model=${Settings.GEMINI_MODEL})`);
@@ -38,7 +47,9 @@ export class GeminiProvider implements AIProvider {
         if (!lastMessage) throw new Error("No message to send to Gemini.");
         const chat = model.startChat({ history: geminiMessages.slice(0, -1) });
         const response = await chat.sendMessage(lastMessage.parts);
-        return response.response.text();
+        const reply = response.response.text().trim();
+        if (!reply) throw new Error("Gemini returned an empty reply.");
+        return reply;
     }
 
     async describeImage(_imageBuffer: Buffer, _mimeType: string): Promise<ImageDescription> {

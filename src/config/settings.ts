@@ -18,16 +18,21 @@ export class Settings {
     static OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
     static OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openrouter/free";
 
-    // Groq (for audio transcription)
+    // Groq chat and voice transcription
     static GROQ_API_KEY = process.env.GROQ_API_KEY || "";
     static GROQ_CHAT_API_KEY = process.env.GROQ_CHAT_API_KEY || Settings.GROQ_API_KEY;
     static GROQ_CHAT_MODEL = process.env.GROQ_CHAT_MODEL || "qwen/qwen3.8-27b";
     static GROQ_FREE_PLAN_CONFIRMED = process.env.GROQ_FREE_PLAN_CONFIRMED === "true";
     static GROQ_MODEL = process.env.GROQ_MODEL || "whisper-large-v3-turbo";
 
+    static get groqVoiceKey() {
+        return this.GROQ_API_KEY || (this.GROQ_FREE_PLAN_CONFIRMED ? this.GROQ_CHAT_API_KEY : "");
+    }
+
     // Gemini
     static GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-    static GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+    static GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+    static GEMINI_FREE_PLAN_CONFIRMED = process.env.GEMINI_FREE_PLAN_CONFIRMED === "true";
 
     // --- Bot Behavior ---
     static DEBOUNCE_SECONDS = parseFloat(process.env.DEBOUNCE_SECONDS || "3.0");
@@ -50,8 +55,8 @@ export class Settings {
         if (this.AI_PROVIDER === "groq" && (!this.GROQ_CHAT_API_KEY || !this.GROQ_FREE_PLAN_CONFIRMED)) {
             errors.push("Groq requires an API key from a Free-plan organization.");
         }
-        if (this.AI_PROVIDER === "gemini" && !this.GEMINI_API_KEY) {
-            errors.push("GEMINI_API_KEY is required when AI_PROVIDER=gemini");
+        if (this.AI_PROVIDER === "gemini" && (!this.GEMINI_API_KEY || !this.GEMINI_FREE_PLAN_CONFIRMED)) {
+            errors.push("Gemini requires an API key from a Free-tier project.");
         }
         if (errors.length > 0) {
             throw new Error("Configuration errors:\n  - " + errors.join("\n  - "));

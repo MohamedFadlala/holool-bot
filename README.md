@@ -15,7 +15,7 @@ npm start
 Open [Bot setup](http://127.0.0.1:3000).
 
 1. Review the existing instructions under **System prompt**, or save your own.
-2. Choose **OpenRouter Free** or **Groq Free plan** under **AI provider**, pick a cloud model from the dropdown, and save. Run **Test active provider** to generate a test reply.
+2. Choose **OpenRouter Free**, **Groq Free plan**, or **Gemini Free tier** under **AI provider**, pick a cloud model from the dropdown, and save. Run **Test active provider** to generate a test reply.
 3. Under **WhatsApp**, select **Connect WhatsApp**. On your phone, open WhatsApp and go to **Linked devices → Link a device**, then scan the QR code shown in the dashboard.
 4. Once the status reads **Connected**, send a message from another WhatsApp account to try the bot.
 
@@ -26,7 +26,9 @@ The dashboard starts before you enter any API keys. Saved settings and WhatsApp 
 - **OpenRouter Free** loads the current selection of free chat models. Its **Automatic** option picks an available free model. Enter an [OpenRouter API key](https://openrouter.ai/settings/keys).
 - **Groq Free plan** offers Qwen 3.8 27B, GPT-OSS 20B, and GPT-OSS 120B. Confirm your organization's plan in [Groq Billing](https://console.groq.com/settings/billing). If `GROQ_API_KEY` is already configured, the dashboard can reuse it. You can use a separate `GROQ_CHAT_API_KEY` for chat.
 
-Set `GROQ_API_KEY` in `.env` to enable voice transcription. To link an account from the terminal, run `npm run start:linked` with the dashboard stopped.
+- **Gemini Free tier** offers Gemini 3.5 Flash-Lite and 3.1 Flash-Lite. Use an API key from a [Google AI Studio](https://aistudio.google.com/api-keys) project on the Free tier.
+
+Voice notes use Groq Whisper Large v3 Turbo with any chat provider. holool-bot can reuse the saved Free-plan Groq key. Use **Save Groq key for voice** to configure that key while keeping Gemini or OpenRouter active. A dedicated `GROQ_API_KEY` in the environment takes precedence. To link an account from the terminal, run `npm run start:linked` with the dashboard stopped.
 
 ## Docker
 

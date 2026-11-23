@@ -1,11 +1,11 @@
 const $ = (selector, parent = document) => parent.querySelector(selector);
-const names = { openrouter: "OpenRouter Free", groq: "Groq Free plan" };
+const names = { openrouter: "OpenRouter Free", groq: "Groq Free plan", gemini: "Gemini Free tier" };
 const promptForm = $("#prompt");
 const providerForm = $("#provider");
 const prompt = $("#system-prompt");
 const model = $("#model");
 const apiKey = $("#api-key");
-const groqFree = $("#groq-free");
+const freeConfirmed = $("#free-confirmed");
 const drafts = new Map();
 let catalog;
 let settings;
@@ -33,6 +33,9 @@ function updateSummary() {
   $("#prompt-state").textContent = settings.prompt ? "Ready" : "Needs instructions";
   const active = settings.providers[settings.activeProvider];
   $("#provider-state").textContent = active?.hasKey ? names[settings.activeProvider] : "API key needed";
+  $("#voice-status").textContent = settings.voiceConfigured
+    ? "Voice transcription is configured with Groq Whisper."
+    : "For voice transcription, save a Free-plan Groq key. You can keep your current chat provider.";
 }
 
 function selectProvider(name) {
@@ -49,14 +52,23 @@ function selectProvider(name) {
   apiKey.value = draft?.key ?? "";
   apiKey.placeholder = saved.hasKey ? "Saved · enter a new key to replace" : "Enter API key";
   apiKey.required = !saved.hasKey;
-  $("#groq-plan").hidden = name !== "groq";
-  groqFree.required = name === "groq";
-  groqFree.checked = draft?.freePlanConfirmed ?? settings.groqFreePlanConfirmed;
-  $("#provider-hint").textContent = name === "groq"
-    ? "Check your organization’s plan in Groq Console → Settings → Billing."
-    : catalog.catalogUnavailable
+  const needsConfirmation = name !== "openrouter";
+  $("#free-plan").hidden = !needsConfirmation;
+  $("#save-voice").hidden = name !== "groq";
+  freeConfirmed.required = needsConfirmation;
+  freeConfirmed.checked = draft?.freePlanConfirmed ??
+    (name === "groq" ? settings.groqFreePlanConfirmed : settings.geminiFreePlanConfirmed);
+  $("#free-plan-label").textContent = name === "groq"
+    ? "This key belongs to a Groq Free-plan organization."
+    : "This key belongs to a Gemini Free-tier project.";
+  const hints = {
+    groq: "Check your organization’s plan in Groq Console → Settings → Billing.",
+    gemini: "Use an API key from a Free-tier project in Google AI Studio.",
+    openrouter: catalog.catalogUnavailable
       ? "The model catalog is temporarily unavailable. You can still use the Free Models Router."
-      : "OpenRouter free models have usage limits. Automatic picks an available free model.";
+      : "OpenRouter free models have usage limits. Automatic picks an available free model."
+  };
+  $("#provider-hint").textContent = hints[name];
 }
 
 function countPrompt() {
@@ -90,7 +102,7 @@ promptForm.addEventListener("submit", event => {
 
 for (const button of providerForm.querySelectorAll("[data-provider]")) {
   button.addEventListener("click", () => {
-    drafts.set(chosen, { model: model.value, key: apiKey.value, freePlanConfirmed: groqFree.checked });
+    drafts.set(chosen, { model: model.value, key: apiKey.value, freePlanConfirmed: freeConfirmed.checked });
     selectProvider(button.dataset.provider);
     feedback(providerForm, "");
   });
@@ -98,17 +110,19 @@ for (const button of providerForm.querySelectorAll("[data-provider]")) {
 
 providerForm.addEventListener("submit", event => {
   event.preventDefault();
+  const voiceOnly = event.submitter?.value === "voice";
   action(providerForm, async () => {
     settings = await request("provider", {
       provider: chosen,
       model: model.value,
       apiKey: apiKey.value,
-      freePlanConfirmed: chosen === "groq" && groqFree.checked
+      freePlanConfirmed: freeConfirmed.checked,
+      voiceOnly
     });
     drafts.delete(chosen);
     selectProvider(chosen);
     updateSummary();
-    return names[chosen] + " is active.";
+    return voiceOnly ? "Groq key saved for voice transcription." : names[chosen] + " is active.";
   });
 });
 

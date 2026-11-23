@@ -6,6 +6,7 @@ import { hasLinkedDevice } from "../whatsapp/auth-store";
 import { sessionManager } from "../whatsapp/session-manager";
 import { Settings } from "../config/settings";
 import { getProvider } from "../providers";
+import { geminiModels } from "../providers/gemini";
 import { groqModels } from "../providers/groq";
 import { freeRouter, isFreeOpenRouterModel, listFreeOpenRouterModels } from "../providers/openrouter";
 import { isAxiosError } from "axios";
@@ -52,6 +53,8 @@ function snapshot() {
         prompt: systemPrompt,
         activeProvider: Settings.AI_PROVIDER,
         groqFreePlanConfirmed: Settings.GROQ_FREE_PLAN_CONFIRMED,
+        geminiFreePlanConfirmed: Settings.GEMINI_FREE_PLAN_CONFIRMED,
+        voiceConfigured: Boolean(Settings.groqVoiceKey),
         providers: Object.fromEntries(Object.entries(providers).map(([name, fields]) => [
             name, { model: Settings[fields.model], hasKey: Boolean(Settings[fields.key]) }
         ]))
@@ -60,15 +63,16 @@ function snapshot() {
 
 async function modelChoices() {
     try {
-        return { openrouter: await listFreeOpenRouterModels(), groq: groqModels };
+        return { openrouter: await listFreeOpenRouterModels(), groq: groqModels, gemini: geminiModels };
     } catch {
-        return { openrouter: [freeRouter], groq: groqModels, catalogUnavailable: true };
+        return { openrouter: [freeRouter], groq: groqModels, gemini: geminiModels, catalogUnavailable: true };
     }
 }
 
 async function testProvider() {
-    const label = Settings.AI_PROVIDER === "groq" ? "Groq" : "OpenRouter";
-    const configured = Settings.AI_PROVIDER === "groq" ? Settings.GROQ_CHAT_API_KEY : Settings.OPENROUTER_API_KEY;
+    const name = Settings.AI_PROVIDER as ProviderName;
+    const label = { groq: "Groq", gemini: "Gemini", openrouter: "OpenRouter" }[name];
+    const configured = Settings[providers[name].key];
     if (!configured) throw new HttpError(400, `Save an API key for ${label} first.`);
     try {
         await getProvider().chat([{ role: "user", content: "Reply with one word: ready." }]);
@@ -102,7 +106,8 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
             const name = field("provider");
             if (!Object.hasOwn(providers, name)) throw new HttpError(400, "Choose an AI provider.");
             const provider = name as ProviderName;
-            const model = field("model");
+            const voiceOnly = provider === "groq" && data.voiceOnly === true;
+            const model = voiceOnly ? Settings.GROQ_CHAT_MODEL : field("model");
             if (!model || model.length > 256) throw new HttpError(400, "Enter a valid model ID.");
             const apiKey = field("apiKey") || Settings[providers[provider].key];
             if (!apiKey) throw new HttpError(400, "Enter an API key for this provider.");
@@ -110,10 +115,13 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
             if (provider === "groq") {
                 if (!groqModels.some(option => option.id === model)) throw new HttpError(400, "Choose a Groq Free-plan model.");
                 if (!freePlanConfirmed) throw new HttpError(400, "Confirm that this Groq key belongs to a Free-plan organization.");
+            } else if (provider === "gemini") {
+                if (!geminiModels.some(option => option.id === model)) throw new HttpError(400, "Choose a Gemini Free-tier model.");
+                if (!freePlanConfirmed) throw new HttpError(400, "Confirm that this Gemini key belongs to a Free-tier project.");
             } else if (!isFreeOpenRouterModel(model)) {
                 throw new HttpError(400, "Choose a free OpenRouter model.");
             }
-            saveProvider({ provider, model, apiKey, freePlanConfirmed });
+            saveProvider({ provider, model, apiKey, freePlanConfirmed }, !voiceOnly);
             break;
         }
         case "/api/whatsapp/disconnect":
