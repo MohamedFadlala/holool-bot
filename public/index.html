@@ -73,7 +73,7 @@
             <div><label for="model">Chat model</label><select id="model" name="model" aria-describedby="provider-hint" required></select></div>
             <div id="provider-key-field"><label for="api-key">API key</label><input id="api-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false"></div>
           </div>
-          <p class="hint" id="provider-hint"></p>
+          <p class="hint" id="provider-hint" aria-live="polite"></p>
           <section id="codex-connection" class="codex-connection" aria-label="ChatGPT connection" hidden>
             <p id="codex-status" role="status">Checking ChatGPT connection…</p>
             <div id="codex-device" hidden>
@@ -83,6 +83,7 @@
             </div>
             <div class="actions">
               <button class="secondary" id="connect-codex" type="button">Connect ChatGPT</button>
+              <button class="secondary" id="refresh-codex-models" type="button" hidden>Refresh models</button>
               <button class="secondary" id="disconnect-codex" type="button" hidden>Disconnect ChatGPT</button>
             </div>
           </section>

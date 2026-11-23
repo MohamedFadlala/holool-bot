@@ -7,7 +7,7 @@ import { sessionManager } from "../whatsapp/session-manager";
 import { chatDetail, listChats, usageReporter, usageSummary } from "../storage/usage";
 import { Settings } from "../config/settings";
 import { codexStatus, disconnectCodex, hasCodexProfile, startCodexLogin } from "../providers/codex-auth";
-import { codexModels } from "../providers/codex";
+import { listCodexModels } from "../providers/codex";
 import { getProvider } from "../providers";
 import { geminiModels } from "../providers/gemini";
 import { groqModels } from "../providers/groq";
@@ -70,9 +70,18 @@ function snapshot() {
 
 async function modelChoices() {
     try {
-        return { openrouter: await listFreeOpenRouterModels(), groq: groqModels, gemini: geminiModels, openai: codexModels };
+        return { openrouter: await listFreeOpenRouterModels(), groq: groqModels, gemini: geminiModels };
     } catch {
-        return { openrouter: [freeRouter], groq: groqModels, gemini: geminiModels, openai: codexModels, catalogUnavailable: true };
+        return { openrouter: [freeRouter], groq: groqModels, gemini: geminiModels, catalogUnavailable: true };
+    }
+}
+
+async function chatGPTModels(force = false) {
+    if (!hasCodexProfile()) return [];
+    try {
+        return await listCodexModels(force);
+    } catch {
+        throw new HttpError(502, "Could not load the ChatGPT model list. Try refreshing it.");
     }
 }
 
@@ -146,7 +155,7 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
             const freePlanConfirmed = data.freePlanConfirmed === true;
             if (provider === "openai") {
                 if (!hasCodexProfile()) throw new HttpError(400, "Connect ChatGPT before activating an OpenAI model.");
-                if (!codexModels.some(option => option.id === model)) throw new HttpError(400, "Choose a ChatGPT plan model.");
+                if (!(await chatGPTModels()).some(option => option.id === model)) throw new HttpError(400, "Choose a model from your ChatGPT account’s model list.");
             } else if (provider === "groq") {
                 if (!groqModels.some(option => option.id === model)) throw new HttpError(400, "Choose a Groq Free-plan model.");
                 if (!freePlanConfirmed) throw new HttpError(400, "Confirm that this Groq key belongs to a Free-plan organization.");
@@ -241,6 +250,9 @@ export function startDashboard() {
             if (req.method === "GET" && path === "/api/settings") return json(res, snapshot());
             if (req.method === "GET" && path === "/api/provider/models") return json(res, await modelChoices());
             if (req.method === "GET" && path === "/api/openai") return json(res, codexStatus());
+            if (req.method === "GET" && path === "/api/openai/models") {
+                return json(res, { models: await chatGPTModels(url.searchParams.get("refresh") === "1") });
+            }
             if (req.method === "GET" && path === "/api/whatsapp") return json(res, whatsappStatus());
             if (req.method === "GET" && path === "/api/whatsapp/qr.png") {
                 const status = sessionManager.getStatus(whatsappSessionId);

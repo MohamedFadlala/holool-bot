@@ -93,6 +93,10 @@ export function hasCodexProfile() {
     return Boolean(profile());
 }
 
+export function isCurrentCodexAccess(access: string) {
+    return profile()?.access === access;
+}
+
 export function disconnectCodex() {
     login?.controller.abort();
     login = undefined;

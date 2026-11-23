@@ -1,6 +1,5 @@
 import { Settings } from "../config/settings";
 import { isFreeOpenRouterModel, freeRouter } from "../providers/openrouter";
-import { codexModels } from "../providers/codex";
 import { geminiModels } from "../providers/gemini";
 import { groqModels } from "../providers/groq";
 import { SYSTEM_PROMPT } from "../config/system-prompt";
@@ -63,7 +62,6 @@ export function loadSettings() {
     const active = rows.find(row => row.name === "activeProvider");
     const selected = active ? JSON.parse(active.value) : Settings.AI_PROVIDER;
     Settings.AI_PROVIDER = "openrouter";
-    if (!codexModels.some(model => model.id === Settings.CODEX_CHAT_MODEL)) Settings.CODEX_CHAT_MODEL = codexModels[0].id;
     if (selected === "openai") Settings.AI_PROVIDER = "openai";
     if (selected === "groq" && Settings.GROQ_CHAT_API_KEY && Settings.GROQ_FREE_PLAN_CONFIRMED &&
         groqModels.some(model => model.id === Settings.GROQ_CHAT_MODEL)) Settings.AI_PROVIDER = "groq";

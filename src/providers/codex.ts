@@ -2,14 +2,72 @@ import { Settings } from "../config/settings";
 import type { ChatMessage } from "../storage/models";
 import type { UsageReporter } from "../storage/usage";
 import type { AIProvider, ImageDescription } from "./base";
-import { codexCredentials, hasCodexProfile } from "./codex-auth";
+import { codexCredentials, hasCodexProfile, isCurrentCodexAccess } from "./codex-auth";
 
-export const codexModels = [
-    { id: "gpt-6-astra", name: "GPT-6 Astra" },
-    { id: "gpt-5.4-mini", name: "GPT-5.4 mini" },
-    { id: "gpt-5.3-codex", name: "GPT-5.3 Codex" }
-];
-const endpoint = "https://chatgpt.com/backend-api/codex/responses";
+const codexBase = "https://chatgpt.com/backend-api/codex";
+// The backend uses the Codex release version to determine which models it can offer.
+const catalogEndpoint = codexBase + "/models?client_version=0.171.0";
+type Credentials = Awaited<ReturnType<typeof codexCredentials>>;
+interface CatalogEntry {
+    slug?: string;
+    display_name?: string;
+    visibility?: string;
+    input_modalities?: string[];
+    priority?: number;
+}
+interface ModelOption { id: string; name: string }
+
+let modelCatalog: { access: string; expires: number; models: ModelOption[] } | undefined;
+
+function codexHeaders(auth: Credentials) {
+    return {
+        Authorization: "Bearer " + auth.access,
+        "ChatGPT-Account-Id": auth.accountId,
+        "User-Agent": "holool-bot",
+        originator: "holool-bot"
+    };
+}
+
+async function sendWithCodex(send: (auth: Credentials) => Promise<Response>, auth: Credentials) {
+    let response = await send(auth);
+    if (response.status === 401) {
+        await response.body?.cancel();
+        auth = await codexCredentials(auth.access);
+        response = await send(auth);
+    }
+    return { response, auth };
+}
+
+export async function listCodexModels(force = false): Promise<ModelOption[]> {
+    const auth = await codexCredentials();
+    if (!force && modelCatalog?.access === auth.access && modelCatalog.expires > Date.now()) {
+        return modelCatalog.models;
+    }
+    const { response, auth: resolved } = await sendWithCodex(credentials => fetch(catalogEndpoint, {
+        redirect: "error",
+        signal: AbortSignal.timeout(10000),
+        headers: { ...codexHeaders(credentials), Accept: "application/json" }
+    }), auth);
+    if (!response.ok) {
+        await response.body?.cancel();
+        throw new Error("Could not load the ChatGPT model catalog.");
+    }
+    const { models } = await response.json() as { models: CatalogEntry[] };
+    if (!Array.isArray(models)) throw new Error("ChatGPT returned an invalid model catalog.");
+    const listed = models.filter(entry => entry?.visibility === "list" &&
+        typeof entry.slug === "string" && entry.slug.length > 0 && entry.slug.length <= 256 &&
+        (!Array.isArray(entry.input_modalities) || entry.input_modalities.includes("text")));
+    listed.sort((a, b) => (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER));
+    const unique = new Map<string, ModelOption>();
+    for (const entry of listed) {
+        const id = entry.slug!;
+        if (!unique.has(id)) unique.set(id, { id, name: entry.display_name?.trim() || id });
+    }
+    const options = [...unique.values()];
+    if (!isCurrentCodexAccess(resolved.access)) throw new Error("The ChatGPT connection changed.");
+    modelCatalog = { access: resolved.access, expires: Date.now() + 300000, models: options };
+    return options;
+}
 
 interface OutputPart { type?: string; text?: string; refusal?: string }
 interface CodexResponse {
@@ -106,26 +164,18 @@ export class CodexProvider implements AIProvider {
             store: false,
             tools: []
         });
-        const send = (auth: Awaited<ReturnType<typeof codexCredentials>>) => fetch(endpoint, {
+        const send = (auth: Credentials) => fetch(codexBase + "/responses", {
             method: "POST", redirect: "error", signal: AbortSignal.timeout(90000),
             headers: {
-                Authorization: "Bearer " + auth.access,
-                "ChatGPT-Account-Id": auth.accountId,
+                ...codexHeaders(auth),
                 "OpenAI-Beta": "responses=experimental",
-                "User-Agent": "holool-bot",
-                originator: "holool-bot",
                 "Content-Type": "application/json",
                 Accept: "text/event-stream"
             },
             body: options
         });
 
-        const auth = await codexCredentials();
-        let result = await send(auth);
-        if (result.status === 401) {
-            await result.body?.cancel();
-            result = await send(await codexCredentials(auth.access));
-        }
+        const { response: result } = await sendWithCodex(send, await codexCredentials());
         if (!result.ok || !result.body) {
             await result.body?.cancel();
             throw Object.assign(new Error("ChatGPT could not serve this reply."), { status: result.status });

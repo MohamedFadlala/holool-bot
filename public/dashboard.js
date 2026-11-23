@@ -65,21 +65,23 @@ function selectProvider(name) {
   for (const button of providerForm.querySelectorAll("[data-provider]")) {
     button.setAttribute("aria-pressed", String(button.dataset.provider === name));
   }
-  const choices = catalog[name];
+  const choices = catalog[name] || [];
   const options = choices.map(option => new Option(option.name, option.id));
   const preferred = draft?.model || saved.model;
-  if (preferred && !choices.some(option => option.id === preferred)) {
+  if (name !== "openai" && preferred && !choices.some(option => option.id === preferred)) {
     options.unshift(new Option(preferred + " (saved, outside catalog)", preferred));
   }
   model.replaceChildren(...options);
-  if (preferred) model.value = preferred;
+  if (options.some(option => option.value === preferred)) model.value = preferred;
   apiKey.value = draft?.key ?? "";
   apiKey.placeholder = saved.hasKey ? "Saved · enter a new key to replace" : "Enter API key";
   const usesCodex = name === "openai";
   $("#provider-key-field").hidden = usesCodex;
   $("#codex-connection").hidden = !usesCodex;
   apiKey.required = !usesCodex && !saved.hasKey;
-  $("#activate-provider").disabled = usesCodex && !saved.hasKey;
+  $("#activate-provider").disabled = usesCodex;
+  model.disabled = usesCodex;
+  $("#refresh-codex-models").hidden = true;
   const needsConfirmation = name === "groq" || name === "gemini";
   $("#free-plan").hidden = !needsConfirmation;
   $("#save-voice").hidden = name !== "groq";
@@ -90,7 +92,7 @@ function selectProvider(name) {
     ? "This key belongs to a Groq Free-plan organization."
     : "This key belongs to a Gemini Free-tier project.";
   const hints = {
-    openai: "Uses the connected account’s ChatGPT/Codex allowance. Model access depends on your plan.",
+    openai: "Connect ChatGPT to load the models available to your account.",
     groq: "Check your organization’s plan in Groq Console → Settings → Billing.",
     gemini: "Use an API key from a Free-tier project in Google AI Studio.",
     openrouter: catalog.catalogUnavailable
@@ -113,7 +115,14 @@ function renderCodexStatus(result, revision) {
   const active = result.state === "connected";
   const waiting = ["starting", "pending"].includes(result.state);
   settings.providers.openai.hasKey = active;
-  $("#activate-provider").disabled = !active;
+  $("#refresh-codex-models").hidden = !active;
+  if (!active) {
+    catalog.openai = [];
+    model.replaceChildren();
+    model.disabled = true;
+    $("#activate-provider").disabled = true;
+    $("#provider-hint").textContent = "Connect ChatGPT to load the models available to your account.";
+  }
   $("#connect-codex").hidden = active || waiting;
   $("#disconnect-codex").hidden = !active && !waiting;
   $("#disconnect-codex").textContent = waiting ? "Cancel sign-in" : "Disconnect ChatGPT";
@@ -126,6 +135,7 @@ function renderCodexStatus(result, revision) {
     pending: "Waiting for you to approve sign-in."
   })[result.state];
   updateSummary();
+  if (active) void refreshCodexModels(revision);
   if (waiting) codexPoll = setTimeout(() => void refreshCodexStatus(revision), 2000);
 }
 
@@ -134,6 +144,33 @@ async function refreshCodexStatus(revision) {
     renderCodexStatus(await request("openai"), revision);
   } catch (error) {
     if (revision === codexRevision) $("#codex-status").textContent = error.message;
+  }
+}
+
+async function refreshCodexModels(revision, force = false) {
+  const refresh = $("#refresh-codex-models");
+  const hint = $("#provider-hint");
+  refresh.disabled = true;
+  hint.textContent = "Loading models from your ChatGPT account…";
+  try {
+    const { models } = await request("openai/models" + (force ? "?refresh=1" : ""));
+    if (revision !== codexRevision || chosen !== "openai") return;
+    const preferred = model.value || drafts.get("openai")?.model || settings.providers.openai.model;
+    catalog.openai = models;
+    model.replaceChildren(...models.map(option => new Option(option.name, option.id)));
+    if (models.some(option => option.id === preferred)) model.value = preferred;
+    hint.textContent = models.length
+      ? models.length + (models.length === 1 ? " model" : " models") + " available through your ChatGPT/Codex allowance."
+      : "ChatGPT returned no available text models for this account.";
+    updateSummary();
+  } catch (error) {
+    if (revision === codexRevision) hint.textContent = error.message;
+  } finally {
+    if (revision === codexRevision) {
+      refresh.disabled = false;
+      model.disabled = !model.options.length;
+      $("#activate-provider").disabled = model.disabled;
+    }
   }
 }
 
@@ -147,6 +184,7 @@ async function changeCodexConnection(command) {
   });
 }
 
+$("#refresh-codex-models").addEventListener("click", () => void refreshCodexModels(codexRevision, true));
 $("#connect-codex").addEventListener("click", () => void changeCodexConnection("connect"));
 $("#disconnect-codex").addEventListener("click", () => void changeCodexConnection("disconnect"));
 
