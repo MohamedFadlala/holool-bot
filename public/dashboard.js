@@ -65,7 +65,7 @@ function selectProvider(name) {
   for (const button of providerForm.querySelectorAll("[data-provider]")) {
     button.setAttribute("aria-pressed", String(button.dataset.provider === name));
   }
-  const choices = catalog[name] || [];
+  const choices = name === "openai" ? [] : catalog[name];
   const options = choices.map(option => new Option(option.name, option.id));
   const preferred = draft?.model || saved.model;
   if (name !== "openai" && preferred && !choices.some(option => option.id === preferred)) {
@@ -155,10 +155,15 @@ async function refreshCodexModels(revision, force = false) {
   try {
     const { models } = await request("openai/models" + (force ? "?refresh=1" : ""));
     if (revision !== codexRevision || chosen !== "openai") return;
-    const preferred = model.value || drafts.get("openai")?.model || settings.providers.openai.model;
+    const saved = settings.providers.openai.model;
+    const preferred = model.value || drafts.get("openai")?.model || saved;
     catalog.openai = models;
-    model.replaceChildren(...models.map(option => new Option(option.name, option.id)));
-    if (models.some(option => option.id === preferred)) model.value = preferred;
+    const options = models.map(option => new Option(option.name, option.id));
+    if (saved && !models.some(option => option.id === saved)) {
+      options.unshift(new Option(saved + " (saved model)", saved));
+    }
+    model.replaceChildren(...options);
+    if (options.some(option => option.value === preferred)) model.value = preferred;
     hint.textContent = models.length
       ? models.length + (models.length === 1 ? " model" : " models") + " available through your ChatGPT/Codex allowance."
       : "ChatGPT returned no available text models for this account.";

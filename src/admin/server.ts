@@ -155,7 +155,9 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
             const freePlanConfirmed = data.freePlanConfirmed === true;
             if (provider === "openai") {
                 if (!hasCodexProfile()) throw new HttpError(400, "Connect ChatGPT before activating an OpenAI model.");
-                if (!(await chatGPTModels()).some(option => option.id === model)) throw new HttpError(400, "Choose a model from your ChatGPT account’s model list.");
+                if (model !== Settings.CODEX_CHAT_MODEL && !(await chatGPTModels()).some(option => option.id === model)) {
+                    throw new HttpError(400, "Choose a model from your ChatGPT account’s model list.");
+                }
             } else if (provider === "groq") {
                 if (!groqModels.some(option => option.id === model)) throw new HttpError(400, "Choose a Groq Free-plan model.");
                 if (!freePlanConfirmed) throw new HttpError(400, "Confirm that this Groq key belongs to a Free-plan organization.");
