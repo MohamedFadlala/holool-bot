@@ -7,7 +7,7 @@ const integer = new Intl.NumberFormat();
 const dollars = new Intl.NumberFormat("en-US", {
   style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 6
 });
-const providers = { groq: "Groq", gemini: "Gemini", openrouter: "OpenRouter", ollama: "Ollama" };
+const providers = { groq: "Groq", gemini: "Gemini", openrouter: "OpenRouter", openai: "OpenAI", ollama: "Ollama" };
 const kinds = { chat: "Chat", audio: "Transcription", image: "Image" };
 let report;
 let offset = 0;
@@ -55,6 +55,7 @@ async function get(route, params = {}) {
 
 function costParts(row) {
   const notes = [];
+  if (row.subscriptionRequests) notes.push(count(row.subscriptionRequests) + " on ChatGPT plan");
   if (row.estimated) notes.push(count(row.estimated) + " estimated");
   if (row.unknownCost) notes.push(count(row.unknownCost) + " unknown");
   return notes.join(" · ");

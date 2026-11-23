@@ -56,7 +56,7 @@
       </form>
 
       <form class="panel" id="provider">
-        <div class="panel-head"><span class="tile-icon" aria-hidden="true">✦</span><div><h2>AI provider</h2><p>Choose a free cloud model for WhatsApp replies.</p></div></div>
+        <div class="panel-head"><span class="tile-icon" aria-hidden="true">✦</span><div><h2>AI provider</h2><p>Choose the model that handles WhatsApp replies.</p></div></div>
         <fieldset disabled>
           <div class="active-model" aria-live="polite">
             <div><span>Active chat model</span><strong id="active-model-name">Loading…</strong></div>
@@ -67,16 +67,29 @@
             <button type="button" data-provider="openrouter" aria-pressed="false">OpenRouter Free</button>
             <button type="button" data-provider="groq" aria-pressed="false">Groq Free plan</button>
             <button type="button" data-provider="gemini" aria-pressed="false">Gemini Free tier</button>
+            <button type="button" data-provider="openai" aria-pressed="false">OpenAI · ChatGPT plan</button>
           </div>
           <div class="fields">
-            <div><label for="model">Free cloud model</label><select id="model" name="model" aria-describedby="provider-hint" required></select></div>
-            <div><label for="api-key">API key</label><input id="api-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false"></div>
+            <div><label for="model">Chat model</label><select id="model" name="model" aria-describedby="provider-hint" required></select></div>
+            <div id="provider-key-field"><label for="api-key">API key</label><input id="api-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false"></div>
           </div>
           <p class="hint" id="provider-hint"></p>
+          <section id="codex-connection" class="codex-connection" aria-label="ChatGPT connection" hidden>
+            <p id="codex-status" role="status">Checking ChatGPT connection…</p>
+            <div id="codex-device" hidden>
+              <p>Open the sign-in page and enter this one-time code.</p>
+              <code id="codex-code"></code>
+              <a id="codex-verify" href="https://auth.openai.com/codex/device" target="_blank" rel="noopener noreferrer">Open ChatGPT sign-in</a>
+            </div>
+            <div class="actions">
+              <button class="secondary" id="connect-codex" type="button">Connect ChatGPT</button>
+              <button class="secondary" id="disconnect-codex" type="button" hidden>Disconnect ChatGPT</button>
+            </div>
+          </section>
           <p class="hint" id="model-draft" hidden>Save and activate to switch the model used for replies.</p>
           <label class="plan-confirmation" id="free-plan" hidden><input id="free-confirmed" type="checkbox"> <span id="free-plan-label"></span></label>
           <p class="hint" id="voice-status"></p>
-          <div class="actions"><p class="feedback" role="status"></p><button class="secondary" type="button" data-test>Test active provider</button><button class="secondary" id="save-voice" type="submit" value="voice" hidden>Save Groq key for voice</button><button type="submit">Save and activate</button></div>
+          <div class="actions"><p class="feedback" role="status"></p><button class="secondary" type="button" data-test>Test active provider</button><button class="secondary" id="save-voice" type="submit" value="voice" hidden>Save Groq key for voice</button><button id="activate-provider" type="submit">Save and activate</button></div>
         </fieldset>
       </form>
 

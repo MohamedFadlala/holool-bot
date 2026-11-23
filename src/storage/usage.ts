@@ -10,7 +10,7 @@ export interface ModelUsage {
     totalTokens?: number;
     audioSeconds?: number;
     costUsd?: number;
-    costBasis?: "reported" | "free" | "estimate";
+    costBasis?: "reported" | "free" | "estimate" | "subscription";
 }
 
 export type UsageReporter = (event: ModelUsage) => void;
@@ -35,7 +35,7 @@ export function usageReporter(chatId: string | null, name = ""): UsageReporter {
                   (chat_id, provider, model, kind, input_tokens, output_tokens, total_tokens, audio_seconds, cost_usd, cost_basis)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(chatId, event.provider, event.model, event.kind ?? "chat", input, output, total,
-                measured(event.audioSeconds), cost, cost !== null ? event.costBasis ?? "estimate" : "unknown");
+                measured(event.audioSeconds), cost, event.costBasis === "subscription" ? "subscription" : cost !== null ? event.costBasis ?? "estimate" : "unknown");
         } catch {
             Logger.error("Could not record model usage.");
         }
@@ -49,7 +49,8 @@ const totals = `
     SUM(u.total_tokens) AS tokens,
     SUM(u.audio_seconds) AS audioSeconds,
     SUM(u.cost_usd) AS costUsd,
-    COUNT(CASE WHEN u.cost_usd IS NULL THEN u.id END) AS unknownCost,
+    COUNT(CASE WHEN u.cost_usd IS NULL AND u.cost_basis <> 'subscription' THEN u.id END) AS unknownCost,
+    COUNT(CASE WHEN u.cost_basis = 'subscription' THEN u.id END) AS subscriptionRequests,
     COUNT(CASE WHEN u.cost_basis = 'estimate' THEN u.id END) AS estimated,
     COUNT(CASE WHEN u.kind <> 'audio' AND u.total_tokens IS NULL THEN u.id END) AS unknownTokens
 `;

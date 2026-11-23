@@ -1,5 +1,5 @@
 const $ = (selector, parent = document) => parent.querySelector(selector);
-const names = { openrouter: "OpenRouter Free", groq: "Groq Free plan", gemini: "Gemini Free tier" };
+const names = { openrouter: "OpenRouter Free", groq: "Groq Free plan", gemini: "Gemini Free tier", openai: "OpenAI · ChatGPT plan" };
 const promptForm = $("#prompt");
 const providerForm = $("#provider");
 const prompt = $("#system-prompt");
@@ -11,6 +11,8 @@ let catalog;
 const previewResult = $("#prompt-preview-result");
 let settings;
 let chosen;
+let codexPoll;
+let codexRevision = 0;
 
 async function request(path, body) {
   const options = body === undefined ? {} : {
@@ -37,11 +39,12 @@ function updateSummary() {
   const providerName = names[settings.activeProvider] || settings.activeProvider;
   const modelName = catalog?.[settings.activeProvider]?.find(option => option.id === activeModel)?.name || activeModel;
   const activeLabel = providerName + " · " + modelName;
-  $("#provider-state").textContent = active?.hasKey ? activeLabel : "API key needed";
+  $("#provider-state").textContent = active?.hasKey ? activeLabel : settings.activeProvider === "openai" ? "Connect ChatGPT" : "API key needed";
   $("#active-model-name").textContent = activeLabel;
   $("#active-model-id").textContent = activeModel || "";
   const note = $("#active-model-note");
-  note.textContent = !active?.hasKey ? "Add a key to enable replies."
+  note.textContent = !active?.hasKey
+    ? (settings.activeProvider === "openai" ? "Connect ChatGPT to enable replies." : "Add a key to enable replies.")
     : activeModel === "openrouter/free" ? "Automatic routes each request to an available free model." : "";
   note.hidden = !note.textContent;
   updateDraft();
@@ -72,8 +75,12 @@ function selectProvider(name) {
   if (preferred) model.value = preferred;
   apiKey.value = draft?.key ?? "";
   apiKey.placeholder = saved.hasKey ? "Saved · enter a new key to replace" : "Enter API key";
-  apiKey.required = !saved.hasKey;
-  const needsConfirmation = name !== "openrouter";
+  const usesCodex = name === "openai";
+  $("#provider-key-field").hidden = usesCodex;
+  $("#codex-connection").hidden = !usesCodex;
+  apiKey.required = !usesCodex && !saved.hasKey;
+  $("#activate-provider").disabled = usesCodex && !saved.hasKey;
+  const needsConfirmation = name === "groq" || name === "gemini";
   $("#free-plan").hidden = !needsConfirmation;
   $("#save-voice").hidden = name !== "groq";
   freeConfirmed.required = needsConfirmation;
@@ -83,6 +90,7 @@ function selectProvider(name) {
     ? "This key belongs to a Groq Free-plan organization."
     : "This key belongs to a Gemini Free-tier project.";
   const hints = {
+    openai: "Uses the connected account’s ChatGPT/Codex allowance. Model access depends on your plan.",
     groq: "Check your organization’s plan in Groq Console → Settings → Billing.",
     gemini: "Use an API key from a Free-tier project in Google AI Studio.",
     openrouter: catalog.catalogUnavailable
@@ -91,7 +99,56 @@ function selectProvider(name) {
   };
   $("#provider-hint").textContent = hints[name];
   updateDraft();
+  cancelCodexPoll();
+  if (usesCodex) void refreshCodexStatus(codexRevision);
 }
+
+function cancelCodexPoll() {
+  clearTimeout(codexPoll);
+  ++codexRevision;
+}
+
+function renderCodexStatus(result, revision) {
+  if (revision !== codexRevision || chosen !== "openai") return;
+  const active = result.state === "connected";
+  const waiting = ["starting", "pending"].includes(result.state);
+  settings.providers.openai.hasKey = active;
+  $("#activate-provider").disabled = !active;
+  $("#connect-codex").hidden = active || waiting;
+  $("#disconnect-codex").hidden = !active && !waiting;
+  $("#disconnect-codex").textContent = waiting ? "Cancel sign-in" : "Disconnect ChatGPT";
+  $("#codex-device").hidden = !result.userCode;
+  $("#codex-code").textContent = result.userCode || "";
+  $("#codex-status").textContent = result.message || ({
+    connected: "ChatGPT is connected.",
+    disconnected: "Connect a ChatGPT account to use its Codex allowance.",
+    starting: "Requesting a device code…",
+    pending: "Waiting for you to approve sign-in."
+  })[result.state];
+  updateSummary();
+  if (waiting) codexPoll = setTimeout(() => void refreshCodexStatus(revision), 2000);
+}
+
+async function refreshCodexStatus(revision) {
+  try {
+    renderCodexStatus(await request("openai"), revision);
+  } catch (error) {
+    if (revision === codexRevision) $("#codex-status").textContent = error.message;
+  }
+}
+
+async function changeCodexConnection(command) {
+  cancelCodexPoll();
+  const revision = codexRevision;
+  await action(providerForm, async () => {
+    const result = await request("openai/" + command, {});
+    renderCodexStatus(result, revision);
+    return "";
+  });
+}
+
+$("#connect-codex").addEventListener("click", () => void changeCodexConnection("connect"));
+$("#disconnect-codex").addEventListener("click", () => void changeCodexConnection("disconnect"));
 
 function countPrompt() {
   $("#prompt-length").textContent = prompt.value.length.toLocaleString() + " characters";
@@ -257,7 +314,7 @@ window.addEventListener("hashchange", updateNavigation);
 updateNavigation();
 
 const catalogRequest = request("provider/models").catch(() => ({
-  catalogUnavailable: true, openrouter: [], groq: [], gemini: []
+  catalogUnavailable: true, openrouter: [], groq: [], gemini: [], openai: []
 }));
 request("settings").then(async result => {
   settings = result;

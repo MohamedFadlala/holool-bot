@@ -75,6 +75,11 @@ output,.hint { font-size:12px; color:var(--muted); }
 .preview-button:hover { background:#edf5ff; }
 #prompt-preview-result { margin-top:9px; padding:9px 11px; border-radius:7px; background:#f1f7ff; white-space:pre-wrap; overflow-wrap:anywhere; }
 #model-draft { color:#805916; }
+.codex-connection { margin-top:11px; border:1px solid var(--line); border-radius:9px; padding:10px 12px; }
+.codex-connection .actions { justify-content:flex-start; }
+#codex-device { margin-top:6px; }
+#codex-device code { display:inline-block; margin:5px 12px 0 0; padding:4px 9px; background:#e6f2ff; font-size:16px; font-weight:700; }
+#codex-device a { color:#0059bc; text-decoration:underline; }
 .plan-confirmation { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; }
 .provider-options { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:17px; }
 .provider-options button { padding:7px 12px; border-radius:6px; border:1px solid #d9e3f0; background:white; color:#304b71; font-weight:600; }

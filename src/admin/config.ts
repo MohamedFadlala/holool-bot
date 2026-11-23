@@ -1,11 +1,13 @@
 import { Settings } from "../config/settings";
 import { isFreeOpenRouterModel, freeRouter } from "../providers/openrouter";
+import { codexModels } from "../providers/codex";
 import { geminiModels } from "../providers/gemini";
 import { groqModels } from "../providers/groq";
 import { SYSTEM_PROMPT } from "../config/system-prompt";
 import { getConnection } from "../storage/database";
 
 export const providers = {
+    openai: { key: null, model: "CODEX_CHAT_MODEL" },
     openrouter: { key: "OPENROUTER_API_KEY", model: "OPENROUTER_MODEL" },
     groq: { key: "GROQ_CHAT_API_KEY", model: "GROQ_CHAT_MODEL" },
     gemini: { key: "GEMINI_API_KEY", model: "GEMINI_MODEL" }
@@ -37,7 +39,7 @@ export function savePrompt(prompt: string) {
 export function applyProvider(value: { provider: ProviderName; model: string; apiKey: string; freePlanConfirmed?: boolean }) {
     const fields = providers[value.provider];
     Settings[fields.model] = value.model;
-    Settings[fields.key] = value.apiKey;
+    if (fields.key) Settings[fields.key] = value.apiKey;
     if (value.provider === "groq") Settings.GROQ_FREE_PLAN_CONFIRMED = value.freePlanConfirmed === true;
     if (value.provider === "gemini") Settings.GEMINI_FREE_PLAN_CONFIRMED = value.freePlanConfirmed === true;
 }
@@ -61,6 +63,8 @@ export function loadSettings() {
     const active = rows.find(row => row.name === "activeProvider");
     const selected = active ? JSON.parse(active.value) : Settings.AI_PROVIDER;
     Settings.AI_PROVIDER = "openrouter";
+    if (!codexModels.some(model => model.id === Settings.CODEX_CHAT_MODEL)) Settings.CODEX_CHAT_MODEL = codexModels[0].id;
+    if (selected === "openai") Settings.AI_PROVIDER = "openai";
     if (selected === "groq" && Settings.GROQ_CHAT_API_KEY && Settings.GROQ_FREE_PLAN_CONFIRMED &&
         groqModels.some(model => model.id === Settings.GROQ_CHAT_MODEL)) Settings.AI_PROVIDER = "groq";
     if (selected === "gemini" && Settings.GEMINI_API_KEY && Settings.GEMINI_FREE_PLAN_CONFIRMED &&

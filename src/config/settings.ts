@@ -14,6 +14,9 @@ export class Settings {
     static OLLAMA_API_KEY = process.env.OLLAMA_API_KEY || "";
     static OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma4:31b-cloud";
 
+    // ChatGPT plan via Codex OAuth
+    static CODEX_CHAT_MODEL = process.env.CODEX_CHAT_MODEL || "gpt-6-astra";
+
     // OpenRouter
     static OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
     static OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openrouter/free";

@@ -1,3 +1,4 @@
+import { CodexProvider } from "./codex";
 import { GroqProvider } from "./groq";
 import { AIProvider } from "./base";
 import { GeminiProvider } from "./gemini";
@@ -8,6 +9,7 @@ import { Settings } from "../config/settings";
 export function getProvider(): AIProvider {
     const providerName = Settings.AI_PROVIDER.toLowerCase();
     
+    if (providerName === "openai") return new CodexProvider();
     if (providerName === "groq") {
         return new GroqProvider();
     } else if (providerName === "gemini") {

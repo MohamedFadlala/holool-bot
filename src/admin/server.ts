@@ -6,6 +6,8 @@ import { hasLinkedDevice } from "../whatsapp/auth-store";
 import { sessionManager } from "../whatsapp/session-manager";
 import { chatDetail, listChats, usageReporter, usageSummary } from "../storage/usage";
 import { Settings } from "../config/settings";
+import { codexStatus, disconnectCodex, hasCodexProfile, startCodexLogin } from "../providers/codex-auth";
+import { codexModels } from "../providers/codex";
 import { getProvider } from "../providers";
 import { geminiModels } from "../providers/gemini";
 import { groqModels } from "../providers/groq";
@@ -61,24 +63,25 @@ function snapshot() {
         geminiFreePlanConfirmed: Settings.GEMINI_FREE_PLAN_CONFIRMED,
         voiceConfigured: Boolean(Settings.groqVoiceKey),
         providers: Object.fromEntries(Object.entries(providers).map(([name, fields]) => [
-            name, { model: Settings[fields.model], hasKey: Boolean(Settings[fields.key]) }
+            name, { model: Settings[fields.model], hasKey: fields.key ? Boolean(Settings[fields.key]) : hasCodexProfile() }
         ]))
     };
 }
 
 async function modelChoices() {
     try {
-        return { openrouter: await listFreeOpenRouterModels(), groq: groqModels, gemini: geminiModels };
+        return { openrouter: await listFreeOpenRouterModels(), groq: groqModels, gemini: geminiModels, openai: codexModels };
     } catch {
-        return { openrouter: [freeRouter], groq: groqModels, gemini: geminiModels, catalogUnavailable: true };
+        return { openrouter: [freeRouter], groq: groqModels, gemini: geminiModels, openai: codexModels, catalogUnavailable: true };
     }
 }
 
 async function testProvider(sample = "") {
     const name = Settings.AI_PROVIDER as ProviderName;
-    const label = { groq: "Groq", gemini: "Gemini", openrouter: "OpenRouter" }[name];
-    const configured = Settings[providers[name].key];
-    if (!configured) throw new HttpError(400, `Save an API key for ${label} first.`);
+    const label = { groq: "Groq", gemini: "Gemini", openrouter: "OpenRouter", openai: "OpenAI" }[name];
+    const key = providers[name].key;
+    if (key && !Settings[key]) throw new HttpError(400, `Save an API key for ${label} first.`);
+    if (name === "openai" && !hasCodexProfile()) throw new HttpError(400, "Connect ChatGPT first.");
     try {
         const activeModel = Settings[providers[name].model];
         const report = usageReporter(null);
@@ -95,6 +98,18 @@ async function testProvider(sample = "") {
 
     } catch (error) {
         const status = isAxiosError(error) ? error.response?.status : (error as { status?: number })?.status;
+        if (name === "openai") {
+            if (status === 401 || status === 403) {
+                throw new HttpError(502, "ChatGPT rejected the connection or model access. Check your plan or reconnect ChatGPT.");
+            }
+            if (status === 402 || status === 429) {
+                throw new HttpError(429, "ChatGPT is limiting this request. Check your Codex allowance and try again later.");
+            }
+            if (status === 400 || status === 404) {
+                throw new HttpError(502, "ChatGPT could not serve this model. Select a model your account can access.");
+            }
+            throw new HttpError(502, "ChatGPT could not generate a test reply. Try again.");
+        }
         if (status === 401 || status === 403) throw new HttpError(502, `${label} rejected the key or model access. Check your key and account.`);
         if (status === 402) throw new HttpError(502, `${label} declined this request because of its billing or credit rules.`);
         if (status === 429) throw new HttpError(429, `${label} is rate-limiting this model. Try again later or select another free model.`);
@@ -125,10 +140,14 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
             const voiceOnly = provider === "groq" && data.voiceOnly === true;
             const model = voiceOnly ? Settings.GROQ_CHAT_MODEL : field("model");
             if (!model || model.length > 256) throw new HttpError(400, "Enter a valid model ID.");
-            const apiKey = field("apiKey") || Settings[providers[provider].key];
-            if (!apiKey) throw new HttpError(400, "Enter an API key for this provider.");
+            const key = providers[provider].key;
+            const apiKey = key ? field("apiKey") || Settings[key] : "";
+            if (key && !apiKey) throw new HttpError(400, "Enter an API key for this provider.");
             const freePlanConfirmed = data.freePlanConfirmed === true;
-            if (provider === "groq") {
+            if (provider === "openai") {
+                if (!hasCodexProfile()) throw new HttpError(400, "Connect ChatGPT before activating an OpenAI model.");
+                if (!codexModels.some(option => option.id === model)) throw new HttpError(400, "Choose a ChatGPT plan model.");
+            } else if (provider === "groq") {
                 if (!groqModels.some(option => option.id === model)) throw new HttpError(400, "Choose a Groq Free-plan model.");
                 if (!freePlanConfirmed) throw new HttpError(400, "Confirm that this Groq key belongs to a Free-plan organization.");
             } else if (provider === "gemini") {
@@ -140,6 +159,11 @@ async function editSettings(req: IncomingMessage, res: ServerResponse, path: str
             saveProvider({ provider, model, apiKey, freePlanConfirmed }, !voiceOnly);
             break;
         }
+        case "/api/openai/connect":
+            return json(res, await startCodexLogin());
+        case "/api/openai/disconnect":
+            disconnectCodex();
+            return json(res, codexStatus());
         case "/api/whatsapp/disconnect":
             await sessionManager.disconnectSession(whatsappSessionId);
             return json(res, whatsappStatus());
@@ -216,6 +240,7 @@ export function startDashboard() {
             }
             if (req.method === "GET" && path === "/api/settings") return json(res, snapshot());
             if (req.method === "GET" && path === "/api/provider/models") return json(res, await modelChoices());
+            if (req.method === "GET" && path === "/api/openai") return json(res, codexStatus());
             if (req.method === "GET" && path === "/api/whatsapp") return json(res, whatsappStatus());
             if (req.method === "GET" && path === "/api/whatsapp/qr.png") {
                 const status = sessionManager.getStatus(whatsappSessionId);
