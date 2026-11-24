@@ -9,6 +9,7 @@ import { ChatMessage } from "../storage/models";
 import { isAudioMessage, transcribeAudio } from "../utils/transcription";
 import { isImageMessage, downloadImage } from "../utils/image-utils";
 import { messageBuffer } from "./message-buffer";
+import { handoffInstructions, INVALID_REPLY, isInternalContact, parseHandoffReply, phoneFromJid, sendHandoff } from "./handoffs";
 
 const chatRepo = new ChatRepository();
 
@@ -24,6 +25,10 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
 
         const remoteJid = msg.key.remoteJid;
         if (!remoteJid || remoteJid === "status@broadcast") return;
+        // Internal recipients must not start automated sales conversations or loops.
+        // Only direct chats can authorize forwarding their own conversation.
+        if (!remoteJid.endsWith("@s.whatsapp.net") && !remoteJid.endsWith("@lid")) return;
+        if (isInternalContact(remoteJid, msg.key.remoteJidAlt)) return;
         
         // Ignore messages sent by the bot itself
         if (msg.key.fromMe) return;
@@ -145,17 +150,25 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
 
                 // Read the active provider and prompt together after the last await before generation.
                 const promptRevision = systemPromptRevision;
+                const history = chatRepo.getHistory(jid, Settings.MAX_HISTORY_MESSAGES, promptRevision);
+                const phone = phoneFromJid(jid) ?? phoneFromJid(lastMsg.key.remoteJidAlt);
                 const messagesForProvider: ChatMessage[] = [
-                    { role: "system", content: systemPrompt },
-                    ...chatRepo.getHistory(jid, Settings.MAX_HISTORY_MESSAGES, promptRevision)
+                    { role: "system", content: systemPrompt + "\n\n" + handoffInstructions(jid, phone) },
+                    ...history
                 ];
                 let aiResponse = "";
                 
                 try {
-                    aiResponse = await getProvider().chat(messagesForProvider, reportUsage);
+                    const raw = await getProvider().chat(messagesForProvider, reportUsage);
+                    const response = parseHandoffReply(raw, history);
+                    if (!isActive()) return;
+                    aiResponse = response.handoff
+                        ? await sendHandoff(wsock, jid, lastMsg.key.id ?? "", response.handoff, isActive,
+                            !/[\u0600-\u06ff]/.test(combinedText))
+                        : response.reply;
                 } catch (error: any) {
                     Logger.error(`[${sessionId}] AI Provider Error: ${error.message}`);
-                    aiResponse = "Sorry, I am having trouble processing your request right now. Please try again later.";
+                    aiResponse = INVALID_REPLY;
                 }
 
                 if (!isActive()) return;

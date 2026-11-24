@@ -86,6 +86,20 @@ export function initDb(): void {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS whatsapp_handoffs (
+            id INTEGER PRIMARY KEY,
+            chat_id TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            recipient TEXT NOT NULL CHECK (recipient IN ('sales', 'engineer')),
+            summary TEXT NOT NULL,
+            summary_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'failed')),
+            whatsapp_message_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(chat_id, source_message_id, recipient)
+        );
+        CREATE INDEX IF NOT EXISTS idx_handoffs_chat ON whatsapp_handoffs(chat_id, id);
     `);
     db.transaction(() => {
         if (!db.prepare("SELECT 1 FROM pragma_table_info('chat_history') WHERE name = 'prompt_revision'").get()) {

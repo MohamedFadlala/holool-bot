@@ -23,6 +23,17 @@ Use **Disconnect WhatsApp** to forget the saved device session. Reconnecting req
 
 The **Active chat model** shows what the running bot will use for new replies. Use **Preview saved prompt** to try the saved instructions with that model without sending a WhatsApp message. When the system prompt changes, new replies use the customer's prior messages and assistant replies generated under the new prompt. The Chats dashboard keeps the full stored transcript.
 
+## Internal WhatsApp handoffs
+
+With WhatsApp connected, the bot can send an internal summary when a customer requests or agrees to follow-up:
+
+- Ready-made purchases, quotes, demos and visits go to **عوض الكريم (Sales)** at **+249900652302**.
+- Custom development, substantial modifications and integrations go to **محمد فضل الله (Lead engineer)** at **+249967965493**.
+
+Destinations are restricted in code. The model selects the team and writes a summary; the application sends it through the linked WhatsApp account. It confirms submission only after WhatsApp returns a message ID. This confirms submission, not delivery, reading, or an appointment. Failures offer the team's direct number/link. Requests and send results are stored in SQLite; duplicate message IDs and identical pending/sent summaries are suppressed across restarts. Uncertain sends are not retried automatically. Internal team chats and group chats are excluded from automated replies. Dashboard prompt previews never send handoffs.
+
+This release installs the supplied sales prompt (with CEO **حامد**) once, replacing any previously saved prompt and advancing its revision. Later dashboard edits remain in effect. The new handoff table is created automatically at startup.
+
 The dashboard starts before you enter any API keys. Saved settings and WhatsApp sessions live in SQLite. holool-bot reconnects a saved WhatsApp session when it starts. The dashboard shows whether a provider key is saved. Leave its field blank to keep the saved key, or enter a replacement to rotate it.
 
 - **OpenRouter Free** loads the current selection of free chat models. Its **Automatic** option picks an available free model. Enter an [OpenRouter API key](https://openrouter.ai/settings/keys).

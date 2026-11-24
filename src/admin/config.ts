@@ -2,7 +2,7 @@ import { Settings } from "../config/settings";
 import { isFreeOpenRouterModel, freeRouter } from "../providers/openrouter";
 import { geminiModels } from "../providers/gemini";
 import { groqModels } from "../providers/groq";
-import { SYSTEM_PROMPT } from "../config/system-prompt";
+import { SYSTEM_PROMPT, SYSTEM_PROMPT_VERSION } from "../config/system-prompt";
 import { getConnection } from "../storage/database";
 
 export const providers = {
@@ -53,6 +53,19 @@ export function loadSettings() {
     systemPrompt = prompt ? JSON.parse(prompt.value) : SYSTEM_PROMPT;
     // Older custom prompts have no revision. Exclude assistant replies whose prompt is unknown.
     systemPromptRevision = revision ? JSON.parse(revision.value) : systemPrompt === SYSTEM_PROMPT ? 0 : 1;
+    // Install the requested prompt once on existing deployments too. Subsequent
+    // dashboard edits remain authoritative until the next bundled prompt release.
+    const bundledVersion = rows.find(row => row.name === "bundledPromptVersion");
+    if (!bundledVersion || JSON.parse(bundledVersion.value) !== SYSTEM_PROMPT_VERSION) {
+        const nextRevision = systemPromptRevision + 1;
+        getConnection().transaction(() => {
+            writeSetting("prompt", SYSTEM_PROMPT);
+            writeSetting("promptRevision", nextRevision);
+            writeSetting("bundledPromptVersion", SYSTEM_PROMPT_VERSION);
+        })();
+        systemPrompt = SYSTEM_PROMPT;
+        systemPromptRevision = nextRevision;
+    }
     for (const row of rows) {
         if (row.name.startsWith("provider:")) {
             const provider = row.name.slice("provider:".length);

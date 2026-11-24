@@ -18,6 +18,7 @@ type OnCompleteCallback = (
 
 class MessageBuffer {
     private buffers: Map<string, BufferEntry> = new Map();
+    private responses: Map<string, Promise<void>> = new Map();
 
     cancel(socket: WASocket) {
         for (const [jid, entry] of this.buffers) {
@@ -82,11 +83,19 @@ class MessageBuffer {
 
         const combinedText = entry.texts.join("\n\n---\n\n");
 
-        try {
-            await onComplete(remoteJid, combinedText, entry.lastMsg, entry.sock);
-        } catch (err) {
-            console.error(`[MessageBuffer] Error flushing buffer for ${remoteJid}:`, err);
-        }
+        // A second buffer can flush while the first model call is still running.
+        // Process each chat in order so it sees the previous handoff's send result.
+        const previous = this.responses.get(remoteJid) ?? Promise.resolve();
+        const response = previous.then(async () => {
+            try {
+                await onComplete(remoteJid, combinedText, entry.lastMsg, entry.sock);
+            } catch (err) {
+                console.error(`[MessageBuffer] Error flushing buffer for ${remoteJid}:`, err);
+            }
+        });
+        this.responses.set(remoteJid, response);
+        await response;
+        if (this.responses.get(remoteJid) === response) this.responses.delete(remoteJid);
     }
 
     /**

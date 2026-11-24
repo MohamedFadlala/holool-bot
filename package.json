@@ -4,6 +4,7 @@
   "description": "Holool WhatsApp bot and local setup dashboard",
   "main": "dist/main.js",
   "scripts": {
+    "test": "tsx --test tests/*.test.ts",
     "build": "tsc",
     "start": "node dist/main.js",
     "dev": "tsx src/main.ts",
