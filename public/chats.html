@@ -8,6 +8,7 @@
   <link rel="icon" href="/assets/holool-mark.webp">
   <link rel="stylesheet" href="/dashboard.css">
   <link rel="stylesheet" href="/chats.css">
+  <script src="/whatsapp-status.js" defer></script>
   <script src="/chats.js" defer></script>
 </head>
 <body>
@@ -21,6 +22,11 @@
   </aside>
   <main>
     <header class="topbar"><span>Workspace <span class="separator">/</span> <strong>Chats &amp; usage</strong></span><a class="local" href="/">Bot setup</a></header>
+    <section class="connection-banner" id="connection-banner" data-state="checking" role="status" aria-live="polite" aria-atomic="true">
+      <span class="connection-dot" aria-hidden="true"></span>
+      <div><strong id="connection-heading">Checking WhatsApp connection…</strong><p id="connection-detail">Bot availability has not been confirmed yet.</p></div>
+      <a id="connection-action" href="/#whatsapp">View connection</a>
+    </section>
     <div class="workspace">
       <header class="usage-title">
         <div><h1>Chats &amp; usage</h1><p>Read WhatsApp conversations and see what each model used.</p></div>

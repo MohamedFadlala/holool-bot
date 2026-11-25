@@ -31,6 +31,7 @@ const assets: Record<string, string> = {
     "/chats.js": "chats.js",
     "/dashboard.css": "dashboard.css",
     "/dashboard.js": "dashboard.js",
+    "/whatsapp-status.js": "whatsapp-status.js",
     "/assets/holool-mark.webp": "assets/holool-mark.webp",
     "/assets/holool-logo.webp": "assets/holool-logo.webp",
     "/assets/holool-city.webp": "assets/holool-city.webp"

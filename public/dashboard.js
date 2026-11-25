@@ -20,6 +20,7 @@ async function request(path, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   };
+  if (path === "whatsapp") options.signal = AbortSignal.timeout(10000);
   const response = await fetch("/api/" + path, options);
   const result = await response.json().catch(() => null);
   if (!response.ok || !result) throw new Error(result?.message || "The server returned HTTP " + response.status + ".");
@@ -282,26 +283,30 @@ const whatsappLabels = {
   disconnecting: "Disconnecting…",
   pairing: "Waiting for scan",
   connected: "Connected",
-  error: "Connection failed"
+  error: "Disconnected — connection failed",
+  unknown: "Connection unknown"
 };
 let whatsappActionPending = false;
 
 function showWhatsApp(status) {
-  const label = whatsappLabels[status.state];
+  window.showWhatsAppConnection(status);
+  const label = whatsappLabels[status.state] || whatsappLabels.unknown;
   const statusText = $("#pairing-status");
   $("#whatsapp-state").textContent = label;
+  $("#whatsapp-state").dataset.state = status.state;
   const message = status.message || {
-    disconnected: "No WhatsApp device is linked.",
+    disconnected: "WhatsApp is disconnected. The bot cannot receive messages, reply, or send team handoffs. Select Connect WhatsApp to resume.",
     connecting: "Connecting to WhatsApp…",
     disconnecting: "Removing the saved WhatsApp session…",
     pairing: "Waiting for you to scan the QR code.",
-    connected: "WhatsApp is linked and ready to receive messages."
+    connected: "WhatsApp is linked and ready to receive messages.",
+    unknown: "Could not check WhatsApp. Connection status is unknown. Retrying…"
   }[status.state];
   if (statusText.textContent !== message) statusText.textContent = message;
-  statusText.classList.toggle("error", status.state === "error");
+  statusText.classList.toggle("error", ["disconnected", "error", "unknown"].includes(status.state));
   connectButton.hidden = !["disconnected", "error"].includes(status.state);
   connectButton.disabled = whatsappActionPending;
-  disconnectButton.hidden = status.state === "disconnected" || (status.state === "error" && !status.hasLinkedDevice);
+  disconnectButton.hidden = ["disconnected", "unknown"].includes(status.state) || (status.state === "error" && !status.hasLinkedDevice);
   disconnectButton.disabled = whatsappActionPending || status.state === "disconnecting";
   $("#disconnect-hint").hidden = disconnectButton.hidden;
   connectButton.textContent = status.state === "error" ? "Try again" : "Connect WhatsApp";
@@ -320,7 +325,7 @@ async function refreshWhatsApp() {
     const status = await request("whatsapp");
     if (!whatsappActionPending) showWhatsApp(status);
   } catch {
-    if (!whatsappActionPending) showWhatsApp({ state: "error", message: "Could not check WhatsApp. Retrying…" });
+    if (!whatsappActionPending) showWhatsApp({ state: "unknown" });
   } finally {
     setTimeout(refreshWhatsApp, 2000);
   }
@@ -333,7 +338,7 @@ async function changeWhatsAppConnection(action, state) {
   try {
     status = await request("whatsapp/" + action, {});
   } catch (error) {
-    status = { state: "error", message: error.message };
+    status = { state: "unknown", message: "Could not confirm the WhatsApp connection. " + error.message };
   } finally {
     whatsappActionPending = false;
     showWhatsApp(status);

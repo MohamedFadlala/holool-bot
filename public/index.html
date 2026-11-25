@@ -7,6 +7,7 @@
   <title>Bot setup | holool-bot</title>
   <link rel="icon" href="/assets/holool-mark.webp">
   <link rel="stylesheet" href="/dashboard.css">
+  <script src="/whatsapp-status.js" defer></script>
   <script src="/dashboard.js" defer></script>
 </head>
 <body>
@@ -22,7 +23,12 @@
     <footer><img src="/assets/holool-logo.webp" alt="Holool" width="64" height="56"><span>Holool<br><small>Software &amp; IT Solutions</small></span></footer>
   </aside>
   <main id="overview">
-    <header class="topbar"><span>Workspace <span class="separator">/</span> <strong>Bot setup</strong></span><span class="local"><i></i> Local dashboard</span></header>
+    <header class="topbar"><span>Workspace <span class="separator">/</span> <strong>Bot setup</strong></span><span class="local">Setup dashboard</span></header>
+    <section class="connection-banner" id="connection-banner" data-state="checking" role="status" aria-live="polite" aria-atomic="true">
+      <span class="connection-dot" aria-hidden="true"></span>
+      <div><strong id="connection-heading">Checking WhatsApp connection…</strong><p id="connection-detail">Bot availability has not been confirmed yet.</p></div>
+      <a id="connection-action" href="#whatsapp">View connection</a>
+    </section>
     <div class="workspace">
       <section class="hero" aria-labelledby="title">
         <div class="hero-copy">
