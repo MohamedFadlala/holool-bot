@@ -10,7 +10,7 @@ import { SYSTEM_PROMPT, SYSTEM_PROMPT_VERSION } from "../src/config/system-promp
 const directory = mkdtempSync(join(tmpdir(), "holool-handoffs-"));
 Settings.DATABASE_PATH = join(directory, "test.db");
 const { getConnection, initDb } = require("../src/storage/database") as typeof import("../src/storage/database");
-const { handoffInstructions, HANDOFF_RECIPIENTS, isInternalContact, parseHandoffReply, phoneFromJid, sendHandoff } =
+const { handoffInstructions, HANDOFF_RECIPIENTS, parseHandoffReply, phoneFromJid, sendHandoff } =
     require("../src/whatsapp/handoffs") as typeof import("../src/whatsapp/handoffs");
 const config = require("../src/admin/config") as typeof import("../src/admin/config");
 initDb();
@@ -42,13 +42,10 @@ test("structured responses validate recipients and consent and fail closed", () 
         [{ role: "assistant", content: consent }]));
 });
 
-test("phone context never treats LIDs as phone numbers and staff are excluded", () => {
+test("phone context never treats LIDs as phone numbers", () => {
     assert.equal(phoneFromJid("249912345678@s.whatsapp.net"), "+249912345678");
     assert.equal(phoneFromJid("249912345678:12@s.whatsapp.net"), "+249912345678");
     assert.equal(phoneFromJid("123456789012345@lid"), undefined);
-    assert.equal(isInternalContact("123456789@lid", "249967965493@s.whatsapp.net"), true);
-    assert.equal(isInternalContact("249900652302@s.whatsapp.net"), true);
-    assert.equal(isInternalContact("249912345678@s.whatsapp.net"), false);
     assert.match(handoffInstructions("phone-context"), /unavailable/);
 });
 
@@ -189,12 +186,62 @@ test("incoming customer messages generate and send handoffs before the customer 
         const saved = db.prepare("SELECT content FROM chat_history WHERE user_id = ? AND role = 'assistant'").get(customer) as { content: string };
         assert.equal(saved.content, sends.at(-1)!.text);
     }
-    // Staff and groups never enter the generation/handoff path.
-    for (const remoteJid of ["249900652302@s.whatsapp.net", "249967965493@s.whatsapp.net", "12345@g.us"]) {
+    // Groups never enter the generation/handoff path.
+    for (const remoteJid of ["12345@g.us"]) {
         flush = undefined;
         await handleIncomingMessage({} as WASocket, { key: { remoteJid }, message: { conversation: consent } }, "test");
         assert.equal(flush, undefined);
     }
+});
+
+test("sales and engineer messages are stored and answered using both phone and LID addresses", async t => {
+    const { handleIncomingMessage } = require("../src/whatsapp/handlers") as typeof import("../src/whatsapp/handlers");
+    const { messageBuffer } = require("../src/whatsapp/message-buffer") as typeof import("../src/whatsapp/message-buffer");
+    const { OpenRouterProvider } = require("../src/providers/openrouter") as typeof import("../src/providers/openrouter");
+    const { botActivity } = require("../src/whatsapp/activity") as typeof import("../src/whatsapp/activity");
+    let flush: (() => Promise<void>) | undefined;
+    let expectedPhone = "";
+    Settings.AI_PROVIDER = "openrouter";
+    t.mock.method(messageBuffer, "push", (jid, text, msg, sock, onComplete) => { flush = () => onComplete(jid, text, msg, sock); });
+    const provider = t.mock.method(OpenRouterProvider.prototype, "chat", async messages => {
+        assert.ok(messages[0].content.includes("Visible WhatsApp phone: +" + expectedPhone));
+        return JSON.stringify({ reply: "مرحباً، كيف أساعدك؟", handoff: null });
+    });
+    let sequence = 0;
+    for (const recipient of Object.values(HANDOFF_RECIPIENTS)) {
+        expectedPhone = recipient.phone;
+        for (const useLid of [false, true]) {
+            sequence++;
+            flush = undefined;
+            const jid = useLid ? `staff-${sequence}@lid` : recipient.phone + "@s.whatsapp.net";
+            const sends: string[] = [];
+            const transport = {
+                readMessages: async () => {}, sendPresenceUpdate: async () => {},
+                sendMessage: async (target: string) => {
+                    sends.push(target);
+                    return { key: { id: "staff-reply-" + sequence } };
+                }
+            } as unknown as WASocket;
+            await handleIncomingMessage(transport, {
+                key: { remoteJid: jid, remoteJidAlt: recipient.phone + "@s.whatsapp.net", id: "staff-inbound-" + sequence },
+                message: { conversation: "مرحبا" }, pushName: recipient.name
+            }, "staff-tests");
+            assert.ok(flush, "staff must reach the normal reply path");
+            await flush();
+            assert.deepEqual(sends, [jid]);
+            const saved = db.prepare("SELECT role FROM chat_history WHERE user_id = ? ORDER BY id DESC LIMIT 2").all(jid);
+            assert.deepEqual(saved, [{ role: "assistant" }, { role: "user" }]);
+            assert.equal(botActivity.get("staff-tests").state, "replied");
+            // Emitting the bot's own outgoing handoff cannot trigger another reply.
+            flush = undefined;
+            await handleIncomingMessage(transport, {
+                key: { remoteJid: jid, fromMe: true, id: "own-handoff-" + sequence },
+                message: { conversation: "طلب متابعة من مساعد حلول" }
+            }, "staff-tests");
+            assert.equal(flush, undefined);
+        }
+    }
+    assert.equal(provider.mock.callCount(), 4);
 });
 
 test("wrapped messages and metadata-first text still produce replies when receipts or presence fail", async t => {

@@ -21,7 +21,7 @@ Open [Bot setup](http://127.0.0.1:3000).
 
 Use **Disconnect WhatsApp** to forget the saved device session. Reconnecting requires a new QR scan.
 
-The connection banner distinguishes a linked WhatsApp connection from verified automatic replies. It shows the linked phone number, the last incoming message and successful reply in the current connection, and processing failures. A closed socket cannot report Connected. Send a text from a different WhatsApp account to verify replies; messages sent by the bot account itself and the two internal handoff recipients are excluded. If messages never appear as received, check that the linked number matches the number being contacted. One tick on the sending phone indicates that WhatsApp has not delivered the message; two ticks with no reply requires checking message processing and the AI provider.
+The connection banner distinguishes a linked WhatsApp connection from verified automatic replies. It shows the linked phone number, the last incoming message and successful reply in the current connection, and processing failures. A closed socket cannot report Connected. Send a text from a different WhatsApp account to verify replies, including either staff handoff number. Messages sent by the bot account itself are excluded. If messages never appear as received, check that the linked number matches the number being contacted. One tick on the sending phone indicates that WhatsApp has not delivered the message; two ticks with no reply requires checking message processing and the AI provider.
 
 The **Active chat model** shows what the running bot will use for new replies. Use **Preview saved prompt** to try the saved instructions with that model without sending a WhatsApp message. When the system prompt changes, new replies use the customer's prior messages and assistant replies generated under the new prompt. The Chats dashboard keeps the full stored transcript.
 
@@ -32,7 +32,7 @@ With WhatsApp connected, the bot can send an internal summary when a customer re
 - Ready-made purchases, quotes, demos and visits go to **عوض الكريم (Sales)** at **+249900652302**.
 - Custom development, substantial modifications and integrations go to **محمد فضل الله (Lead engineer)** at **+249967965493**.
 
-Destinations are restricted in code. The model selects the team and writes a summary; the application sends it through the linked WhatsApp account. It confirms submission only after WhatsApp returns a message ID. This confirms submission, not delivery, reading, or an appointment. Failures offer the team's direct number/link. Requests and send results are stored in SQLite; duplicate message IDs and identical pending/sent summaries are suppressed across restarts. Uncertain sends are not retried automatically. Internal team chats and group chats are excluded from automated replies. Dashboard prompt previews never send handoffs.
+Destinations are restricted in code. The model selects the team and writes a summary; the application sends it through the linked WhatsApp account. It confirms submission only after WhatsApp returns a message ID. This confirms submission, not delivery, reading, or an appointment. Failures offer the team's direct number/link. Requests and send results are stored in SQLite; duplicate message IDs and identical pending/sent summaries are suppressed across restarts. Uncertain sends are not retried automatically. Staff can message and test the bot normally. The bot's own outgoing messages and group chats are excluded from automated replies. Dashboard prompt previews never send handoffs.
 
 This release installs the supplied sales prompt (with CEO **حامد**) once, replacing any previously saved prompt and advancing its revision. Later dashboard edits remain in effect. The new handoff table is created automatically at startup.
 
@@ -54,6 +54,8 @@ Copy `.env.example` to `.env` and run `docker compose up --build -d`. Compose pu
 ## Chats and API usage
 
 Open **Chats & usage** to view stored WhatsApp conversations and filter recorded API usage by date. The dashboard reads input, output, and total tokens from provider responses. Expand a conversation to see its model usage and transcript. Groq Whisper is measured in audio seconds.
+
+The chat list and an open conversation refresh automatically every five seconds while the page is visible. New messages are added without duplicating the transcript or discarding older messages you loaded.
 
 OpenRouter's reported costs take precedence. Confirmed Free plans are recorded at $0.00. When a separate Groq voice key is used, Whisper estimates use Groq's published hourly rate and ten-second minimum. Unknown costs stay unpriced, and the dashboard does not reconstruct token usage for requests made before tracking was added. Provider tests are counted outside chats.
 

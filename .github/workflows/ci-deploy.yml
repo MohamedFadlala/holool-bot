@@ -24,6 +24,7 @@ jobs:
       - run: npm test
       - run: node --check public/dashboard.js
       - run: node --check public/whatsapp-status.js
+      - run: node --check public/chats.js
 
   deploy:
     needs: build

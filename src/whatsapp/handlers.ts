@@ -9,7 +9,7 @@ import { ChatMessage } from "../storage/models";
 import { isAudioMessage, transcribeAudio } from "../utils/transcription";
 import { isImageMessage, downloadImage } from "../utils/image-utils";
 import { messageBuffer } from "./message-buffer";
-import { handoffInstructions, INVALID_REPLY, isInternalContact, parseHandoffReply, phoneFromJid, sendHandoff } from "./handoffs";
+import { handoffInstructions, INVALID_REPLY, parseHandoffReply, phoneFromJid, sendHandoff } from "./handoffs";
 import { botActivity } from "./activity";
 
 const chatRepo = new ChatRepository();
@@ -41,14 +41,10 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
         const remoteJid = msg.key.remoteJid;
         if (!remoteJid || remoteJid === "status@broadcast") return;
         if (msg.key.fromMe) return;
-        // Internal recipients must not start automated sales conversations or loops.
-        // Only direct chats can authorize forwarding their own conversation.
+        // Every direct sender, including staff, can use and test the bot. The
+        // fromMe check above prevents replies to our own handoff summaries.
         if (!remoteJid.endsWith("@s.whatsapp.net") && !remoteJid.endsWith("@lid")) return;
         botActivity.update(sessionId, "received");
-        if (isInternalContact(remoteJid, msg.key.remoteJidAlt)) {
-            botActivity.update(sessionId, "ignored", "Messages from sales and engineering handoff recipients are excluded from automatic replies.");
-            return;
-        }
         // Disappearing/view-once messages contain the actual content inside a wrapper.
         msg = { ...msg, message: normalizeMessageContent(msg.message) };
         if (!msg.message) return;

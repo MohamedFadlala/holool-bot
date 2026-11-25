@@ -19,12 +19,6 @@ export function phoneFromJid(jid: string | null | undefined): string | undefined
     return match ? "+" + match[1] : undefined;
 }
 
-export function isInternalContact(...jids: (string | null | undefined)[]) {
-    return jids.some(jid => Object.values(HANDOFF_RECIPIENTS).some(
-        recipient => phoneFromJid(jid) === "+" + recipient.phone
-    ));
-}
-
 export function handoffInstructions(chatId: string, phone?: string): string {
     const previous = getConnection().prepare(`
         SELECT recipient, summary, status FROM whatsapp_handoffs

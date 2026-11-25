@@ -48,7 +48,7 @@ function alertAt(selector, message) {
 
 async function get(route, params = {}) {
   const query = new URLSearchParams({ ...params, range: range.value });
-  const response = await fetch("/api/" + route + "?" + query);
+  const response = await fetch("/api/" + route + "?" + query, { signal: AbortSignal.timeout(15000) });
   if (!response.ok) throw new Error((await response.json()).message || "Could not load this report.");
   return response.json();
 }
@@ -189,6 +189,7 @@ async function refresh(showReport = true) {
 
 function messageRow(message) {
   const row = element("li", null, message.role === "assistant" ? "assistant" : "customer");
+  row.dataset.messageId = String(message.id);
   const content = element("p", message.content);
   content.dir = "auto";
   row.append(content, element("small", (message.role === "assistant" ? "Bot" : "Customer") + " · " + formattedDate(message.createdAt)));
@@ -209,7 +210,7 @@ async function openChat(chat) {
   await loadChat(false);
 }
 
-async function loadChat(older) {
+async function loadChat(older, live = false) {
   const request = ++chatRevision;
   const loadOlder = $("#older");
   loadOlder.disabled = true;
@@ -217,9 +218,13 @@ async function loadChat(older) {
   try {
     const result = await get("chat", older ? { id: chatId, before } : { id: chatId });
     if (request !== chatRevision) return;
-    before = result.before;
+    if (!live) before = result.before;
     loadOlder.hidden = before == null;
-    $("#transcript").prepend(...result.messages.map(messageRow));
+    const transcript = $("#transcript");
+    const existing = new Set(Array.from(transcript.children, row => row.dataset.messageId));
+    const messages = result.messages.filter(message => !existing.has(String(message.id))).map(messageRow);
+    if (live) transcript.append(...messages);
+    else transcript.prepend(...messages);
     $("#empty-transcript").hidden = $("#transcript").childElementCount > 0;
     const totals = result.usage.totals;
     const caption = costParts(totals);
@@ -235,7 +240,7 @@ async function loadChat(older) {
   }
 }
 
-dialog.addEventListener("close", () => { ++chatRevision; });
+dialog.addEventListener("close", () => { ++chatRevision; void refresh(false); });
 $("#older").addEventListener("click", () => void loadChat(true));
 $("#refresh").addEventListener("click", () => void refresh());
 range.addEventListener("change", () => { offset = 0; void refresh(); });
@@ -250,3 +255,18 @@ $("#search-form").addEventListener("submit", event => {
 $("#previous").addEventListener("click", () => { offset = Math.max(0, offset - 25); void refresh(false); });
 $("#next").addEventListener("click", () => { offset += 25; void refresh(false); });
 void refresh();
+
+async function pollChats() {
+  try {
+    if (!document.hidden && !$("#refresh").disabled) {
+      if (dialog.open) {
+        if (!$("#older").disabled) await loadChat(false, true);
+      } else {
+        await refresh(false);
+      }
+    }
+  } finally {
+    setTimeout(pollChats, 5000);
+  }
+}
+setTimeout(pollChats, 5000);
