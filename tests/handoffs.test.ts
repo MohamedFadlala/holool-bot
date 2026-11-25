@@ -196,3 +196,82 @@ test("incoming customer messages generate and send handoffs before the customer 
         assert.equal(flush, undefined);
     }
 });
+
+test("wrapped messages and metadata-first text still produce replies when receipts or presence fail", async t => {
+    const { handleIncomingMessage } = require("../src/whatsapp/handlers") as typeof import("../src/whatsapp/handlers");
+    const { messageBuffer } = require("../src/whatsapp/message-buffer") as typeof import("../src/whatsapp/message-buffer");
+    const { OpenRouterProvider } = require("../src/providers/openrouter") as typeof import("../src/providers/openrouter");
+    const { botActivity } = require("../src/whatsapp/activity") as typeof import("../src/whatsapp/activity");
+    let flush: (() => Promise<void>) | undefined;
+    t.mock.method(messageBuffer, "push", (jid, text, msg, sock, onComplete) => {
+        assert.equal(text, "مرحبا");
+        flush = () => onComplete(jid, text, msg, sock);
+    });
+    t.mock.method(OpenRouterProvider.prototype, "chat", async () => JSON.stringify({ reply: "مرحباً بك", handoff: null }));
+    Settings.AI_PROVIDER = "openrouter";
+    const variants = [
+        { messageContextInfo: {}, conversation: "مرحبا" },
+        { messageContextInfo: {}, extendedTextMessage: { text: "مرحبا" } },
+        { ephemeralMessage: { message: { conversation: "مرحبا" } } },
+        { viewOnceMessageV2: { message: { extendedTextMessage: { text: "مرحبا" } } } }
+    ];
+    for (const [index, message] of variants.entries()) {
+        flush = undefined;
+        const sends: string[] = [];
+        const session = "message-format-" + index;
+        const transport = {
+            readMessages: async () => { throw new Error("receipt failed"); },
+            sendPresenceUpdate: async () => { throw new Error("presence failed"); },
+            sendMessage: async (_jid: string, content: { text: string }) => {
+                sends.push(content.text);
+                return { key: { id: "reply-" + index } };
+            }
+        } as unknown as WASocket;
+        await handleIncomingMessage(transport, {
+            key: { remoteJid: `24991234000${index}@s.whatsapp.net`, id: "format-" + index }, message
+        }, session);
+        assert.ok(flush, "a supported message must enter the reply buffer");
+        assert.equal(botActivity.get(session).state, "received");
+        await flush();
+        assert.deepEqual(sends, ["مرحباً بك"]);
+        assert.equal(botActivity.get(session).state, "replied");
+        assert.ok(botActivity.get(session).lastReceivedAt);
+        assert.ok(botActivity.get(session).lastReplyAt);
+    }
+});
+
+test("processing diagnostics distinguish provider failure from a successful reply", async t => {
+    const { handleIncomingMessage } = require("../src/whatsapp/handlers") as typeof import("../src/whatsapp/handlers");
+    const { messageBuffer } = require("../src/whatsapp/message-buffer") as typeof import("../src/whatsapp/message-buffer");
+    const { OpenRouterProvider } = require("../src/providers/openrouter") as typeof import("../src/providers/openrouter");
+    const { botActivity } = require("../src/whatsapp/activity") as typeof import("../src/whatsapp/activity");
+    let flush!: () => Promise<void>;
+    t.mock.method(messageBuffer, "push", (jid, text, msg, sock, onComplete) => { flush = () => onComplete(jid, text, msg, sock); });
+    t.mock.method(OpenRouterProvider.prototype, "chat", async () => { throw new Error("provider failed"); });
+    const transport = {
+        readMessages: async () => {}, sendPresenceUpdate: async () => {},
+        sendMessage: async () => ({ key: { id: "fallback-submitted" } })
+    } as unknown as WASocket;
+    await handleIncomingMessage(transport, {
+        key: { remoteJid: "249912340999@s.whatsapp.net", id: "provider-error" }, message: { conversation: "hello" }
+    }, "provider-failure");
+    await flush();
+    assert.equal(botActivity.get("provider-failure").state, "error");
+    assert.match(botActivity.get("provider-failure").message!, /AI provider/);
+    assert.equal(botActivity.get("provider-failure").lastReplyAt, undefined);
+    botActivity.reset("provider-failure");
+    assert.equal(botActivity.get("provider-failure").state, "unverified");
+});
+
+test("a cached connected flag never overrides a closed socket and linked number is exposed", () => {
+    const { SessionManager } = require("../src/whatsapp/session-manager") as typeof import("../src/whatsapp/session-manager");
+    const manager = new SessionManager();
+    const internals = manager as any;
+    internals.statuses.set("test", { state: "connected" });
+    assert.equal(manager.getStatus("test").state, "error");
+    internals.sessions.set("test", { ws: { isOpen: false }, user: { id: "249123212060:5@s.whatsapp.net" } });
+    assert.equal(manager.getStatus("test").state, "error");
+    assert.equal(manager.getLinkedPhone("test"), "+249123212060");
+    internals.sessions.get("test").ws.isOpen = true;
+    assert.equal(manager.getStatus("test").state, "connected");
+});

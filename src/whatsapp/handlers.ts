@@ -1,4 +1,4 @@
-import { WASocket, WAMessage } from "@whiskeysockets/baileys";
+import { WASocket, WAMessage, normalizeMessageContent } from "@whiskeysockets/baileys";
 import { usageReporter } from "../storage/usage";
 import { ChatRepository } from "../storage/repository";
 import { getProvider } from "../providers";
@@ -10,6 +10,7 @@ import { isAudioMessage, transcribeAudio } from "../utils/transcription";
 import { isImageMessage, downloadImage } from "../utils/image-utils";
 import { messageBuffer } from "./message-buffer";
 import { handoffInstructions, INVALID_REPLY, isInternalContact, parseHandoffReply, phoneFromJid, sendHandoff } from "./handoffs";
+import { botActivity } from "./activity";
 
 const chatRepo = new ChatRepository();
 
@@ -19,19 +20,38 @@ const chatRepo = new ChatRepository();
  */
 const bankTransactionFlags = new WeakMap<WASocket, Set<string>>();
 
+async function optionalWhatsAppUpdate(update: () => Promise<unknown>, label: string) {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+        await Promise.race([
+            update(),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Update timed out")), 2000); })
+        ]);
+    } catch {
+        Logger.warn(`Could not send WhatsApp ${label}; continuing with the reply.`);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sessionId: string, isActive = () => true) {
     try {
         if (!isActive() || !msg.message) return;
 
         const remoteJid = msg.key.remoteJid;
         if (!remoteJid || remoteJid === "status@broadcast") return;
+        if (msg.key.fromMe) return;
         // Internal recipients must not start automated sales conversations or loops.
         // Only direct chats can authorize forwarding their own conversation.
         if (!remoteJid.endsWith("@s.whatsapp.net") && !remoteJid.endsWith("@lid")) return;
-        if (isInternalContact(remoteJid, msg.key.remoteJidAlt)) return;
-        
-        // Ignore messages sent by the bot itself
-        if (msg.key.fromMe) return;
+        botActivity.update(sessionId, "received");
+        if (isInternalContact(remoteJid, msg.key.remoteJidAlt)) {
+            botActivity.update(sessionId, "ignored", "Messages from sales and engineering handoff recipients are excluded from automatic replies.");
+            return;
+        }
+        // Disappearing/view-once messages contain the actual content inside a wrapper.
+        msg = { ...msg, message: normalizeMessageContent(msg.message) };
+        if (!msg.message) return;
 
         const pushName = msg.pushName || "User";
         const reportUsage = usageReporter(remoteJid, pushName);
@@ -45,12 +65,13 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
             Logger.info(`[${sessionId}] Received audio message from ${remoteJid}, transcribing...`);
 
             // Mark as read early since audio processing takes time
-            await sock.readMessages([msg.key]);
+            await optionalWhatsAppUpdate(() => sock.readMessages([msg.key]), "read receipt");
 
             try {
                 text = await transcribeAudio(msg, reportUsage);
                 Logger.info(`[${sessionId}] Transcription result: "${text}"`);
             } catch (transcribeError: any) {
+                if (isActive()) botActivity.update(sessionId, "error", "Voice transcription failed. Check the Groq voice key or send a text message.");
                 Logger.error(`[${sessionId}] Transcription failed: ${transcribeError.message}`);
                 const fallbackMsg = "عذراً، لم أتمكن من فهم الرسالة الصوتية. ممكن تكتب الرسالة؟";
                 if (!isActive()) return;
@@ -71,7 +92,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
             Logger.info(`[${sessionId}] Received image message from ${remoteJid}, analyzing...`);
 
             // Mark as read early since image analysis takes time
-            await sock.readMessages([msg.key]);
+            await optionalWhatsAppUpdate(() => sock.readMessages([msg.key]), "read receipt");
 
             try {
                 const { buffer, mimeType } = await downloadImage(msg);
@@ -84,6 +105,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                 isBankTransaction = result.isBankTransaction;
                 Logger.info(`[${sessionId}] Image analysis result (bank tx: ${isBankTransaction}): "${text.substring(0, 100)}..."`);
             } catch (imageError: any) {
+                if (isActive()) botActivity.update(sessionId, "error", "The selected provider could not process an image. Try a text message.");
                 Logger.error(`[${sessionId}] Image analysis failed: ${imageError.message}`);
                 const fallbackMsg = "عذراً، ما قادر أقرا الصورة دي. ممكن ترسلها تاني أو تكتب الرسالة؟";
                 if (!isActive()) return;
@@ -91,23 +113,23 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                 return;
             }
 
-            if (!text) return;
+            if (!text) {
+                botActivity.update(sessionId, "ignored", "The latest incoming message type does not contain supported text, audio, or an image.");
+                return;
+            }
         }
         // Handle text messages
         else {
             // Extract text from text messages
-            const messageType = Object.keys(msg.message)[0];
+            text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
             
-            if (messageType === "conversation") {
-                text = msg.message.conversation || "";
-            } else if (messageType === "extendedTextMessage") {
-                text = msg.message.extendedTextMessage?.text || "";
+            if (!text) {
+                botActivity.update(sessionId, "ignored", "The latest incoming message type does not contain supported text, audio, or an image.");
+                return;
             }
-            
-            if (!text) return;
 
             // Mark as read immediately (for text messages — audio/image already marked above)
-            await sock.readMessages([msg.key]);
+            await optionalWhatsAppUpdate(() => sock.readMessages([msg.key]), "read receipt");
         }
 
         if (!isActive()) return;
@@ -145,7 +167,8 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                 // Add the user message to history (text only — no images stored)
                 chatRepo.addMessage(jid, "user", historyText);
 
-                await wsock.sendPresenceUpdate("composing", jid);
+                botActivity.update(sessionId, "processing");
+                await optionalWhatsAppUpdate(() => wsock.sendPresenceUpdate("composing", jid), "typing indicator");
                 if (!isActive()) return;
 
                 // Read the active provider and prompt together after the last await before generation.
@@ -157,6 +180,7 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                     ...history
                 ];
                 let aiResponse = "";
+                let providerFailed = false;
                 
                 try {
                     const raw = await getProvider().chat(messagesForProvider, reportUsage);
@@ -167,22 +191,29 @@ export async function handleIncomingMessage(sock: WASocket, msg: WAMessage, sess
                             !/[\u0600-\u06ff]/.test(combinedText))
                         : response.reply;
                 } catch (error: any) {
+                    if (!isActive()) return;
                     Logger.error(`[${sessionId}] AI Provider Error: ${error.message}`);
+                    providerFailed = true;
+                    botActivity.update(sessionId, "error", "The AI provider or its response failed. Use Test active provider in AI provider settings and check the service logs.");
                     aiResponse = INVALID_REPLY;
                 }
 
                 if (!isActive()) return;
-                await wsock.sendPresenceUpdate("paused", jid);
+                await optionalWhatsAppUpdate(() => wsock.sendPresenceUpdate("paused", jid), "typing indicator");
                 if (!isActive()) return;
-                await wsock.sendMessage(jid, { text: aiResponse }, { quoted: lastMsg });
+                const sent = await wsock.sendMessage(jid, { text: aiResponse }, { quoted: lastMsg });
+                if (!sent?.key?.id) throw new Error("WhatsApp did not confirm the reply submission");
+                if (!providerFailed) botActivity.update(sessionId, "replied");
                 chatRepo.addMessage(jid, "assistant", aiResponse, promptRevision);
 
             } catch (error) {
+                if (isActive()) botActivity.update(sessionId, "error", "The bot could not complete or send a reply. Check the WhatsApp connection and service logs.");
                 Logger.error(`[${sessionId}] Error in buffered response: ${error}`);
             }
         });
 
     } catch (error) {
+        if (isActive()) botActivity.update(sessionId, "error", "An incoming message could not be processed. Check the service logs.");
         Logger.error(`[${sessionId}] Error handling message: ${error}`);
     }
 }

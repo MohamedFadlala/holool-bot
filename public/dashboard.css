@@ -33,7 +33,7 @@ main { margin-left:224px; }
 .connection-banner p { margin-top:3px; font-size:13px; }
 .connection-banner a { margin-left:auto; flex:none; font-weight:600; padding:8px 12px; border:1px solid currentColor; border-radius:7px; text-decoration:underline; text-underline-offset:3px; }
 .connection-banner[data-state=disconnected],.connection-banner[data-state=error],.connection-banner[data-state=disconnecting] { color:#9d2028; background:#fff0f0; border-color:#e9b5ba; }
-.connection-banner[data-state=connecting],.connection-banner[data-state=pairing],.connection-banner[data-state=unknown] { color:#775000; background:#fff7df; border-color:#e4cd8e; }
+.connection-banner[data-state=connecting],.connection-banner[data-state=pairing],.connection-banner[data-state=unknown],.connection-banner[data-state=unverified],.connection-banner[data-state=reply-error] { color:#775000; background:#fff7df; border-color:#e4cd8e; }
 .connection-banner[data-state=connected] { color:#006443; background:#e7f7ef; border-color:#a7d6bd; }
 .workspace { max-width:1320px; margin:auto; padding:29px clamp(26px,4vw,56px) 52px; }
 .hero { isolation:isolate; position:relative; overflow:hidden; min-height:239px; display:flex; align-items:center; border-radius:16px; padding:29px 34px; background:#05214d; color:#fff; }

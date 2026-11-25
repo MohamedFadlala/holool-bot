@@ -289,21 +289,21 @@ const whatsappLabels = {
 let whatsappActionPending = false;
 
 function showWhatsApp(status) {
-  window.showWhatsAppConnection(status);
-  const label = whatsappLabels[status.state] || whatsappLabels.unknown;
+  const connection = window.showWhatsAppConnection(status);
+  const label = status.state === "connected" ? connection.title : whatsappLabels[status.state] || whatsappLabels.unknown;
   const statusText = $("#pairing-status");
   $("#whatsapp-state").textContent = label;
   $("#whatsapp-state").dataset.state = status.state;
-  const message = status.message || {
+  const message = status.message || (status.state === "connected" ? connection.description : {
     disconnected: "WhatsApp is disconnected. The bot cannot receive messages, reply, or send team handoffs. Select Connect WhatsApp to resume.",
     connecting: "Connecting to WhatsApp…",
     disconnecting: "Removing the saved WhatsApp session…",
     pairing: "Waiting for you to scan the QR code.",
     connected: "WhatsApp is linked and ready to receive messages.",
     unknown: "Could not check WhatsApp. Connection status is unknown. Retrying…"
-  }[status.state];
+  }[status.state]);
   if (statusText.textContent !== message) statusText.textContent = message;
-  statusText.classList.toggle("error", ["disconnected", "error", "unknown"].includes(status.state));
+  statusText.classList.toggle("error", ["disconnected", "error", "unknown"].includes(status.state) || status.activity?.state === "error");
   connectButton.hidden = !["disconnected", "error"].includes(status.state);
   connectButton.disabled = whatsappActionPending;
   disconnectButton.hidden = ["disconnected", "unknown"].includes(status.state) || (status.state === "error" && !status.hasLinkedDevice);

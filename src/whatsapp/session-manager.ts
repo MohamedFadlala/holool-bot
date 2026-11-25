@@ -7,6 +7,8 @@ import { Logger } from "../utils/logger";
 import { clearAuthState, hasLinkedDevice, useSqliteAuthState } from "./auth-store";
 import { messageBuffer } from "./message-buffer";
 import { handleIncomingMessage } from "./handlers";
+import { botActivity } from "./activity";
+import { phoneFromJid } from "./handoffs";
 
 type ConnectionStatus =
     | { state: "disconnected"; message?: string }
@@ -14,7 +16,7 @@ type ConnectionStatus =
     | { state: "pairing"; qr: string; qrId: string }
     | { state: "error"; message: string };
 
-class SessionManager {
+export class SessionManager {
     private sessions = new Map<string, WASocket>();
     private statuses = new Map<string, ConnectionStatus>();
     private connections = new Map<string, AbortController>();
@@ -23,7 +25,15 @@ class SessionManager {
     private logger = pino({ level: "silent" });
 
     getStatus(sessionId: string): ConnectionStatus {
-        return this.statuses.get(sessionId) ?? { state: "disconnected" };
+        const status = this.statuses.get(sessionId) ?? { state: "disconnected" as const };
+        if (status.state === "connected" && !this.sessions.get(sessionId)?.ws.isOpen) {
+            return { state: "error", message: "The WhatsApp socket is closed. Select Try again to reconnect the saved session." };
+        }
+        return status;
+    }
+
+    getLinkedPhone(sessionId: string) {
+        return phoneFromJid(this.sessions.get(sessionId)?.user?.id);
     }
 
     async disconnectSession(sessionId: string) {
@@ -66,7 +76,15 @@ class SessionManager {
     }
 
     async startSession(sessionId: string, terminalQR = false, retry = false) {
-        if (this.connections.has(sessionId)) return;
+        if (this.connections.has(sessionId)) {
+            const socket = this.sessions.get(sessionId);
+            if (this.statuses.get(sessionId)?.state !== "connected" || socket?.ws.isOpen) return;
+            // Recover a dead socket even if its close event never reached us.
+            this.sessions.delete(sessionId);
+            this.connections.get(sessionId)?.abort();
+            this.connections.delete(sessionId);
+            socket?.end(new Error("Replacing a closed WhatsApp socket"));
+        }
         const status = this.getStatus(sessionId).state;
         if (status === "disconnecting" || (!retry && status === "connecting")) return;
         if (!retry) this.retries.delete(sessionId);
@@ -74,6 +92,7 @@ class SessionManager {
         const controller = new AbortController();
         const signal = controller.signal;
         this.connections.set(sessionId, controller);
+        botActivity.reset(sessionId);
         this.statuses.set(sessionId, { state: "connecting" });
         try {
             const { state, saveCreds, getWriteErrorCount } = await useSqliteAuthState(sessionId, signal);
@@ -151,7 +170,10 @@ class SessionManager {
             });
 
             socket.ev.on("messages.upsert", async ({ type, messages }) => {
-                if (type !== "notify" || this.sessions.get(sessionId) !== socket) return;
+                if (this.sessions.get(sessionId) !== socket || signal.aborted) return;
+                botActivity.observeEvent(sessionId, type);
+                Logger.info(`[${sessionId}] WhatsApp message event: ${type}, ${messages.length} message(s).`);
+                if (type !== "notify") return;
                 for (const message of messages) {
                     if (signal.aborted) break;
                     await handleIncomingMessage(socket, message, sessionId, () => !signal.aborted);

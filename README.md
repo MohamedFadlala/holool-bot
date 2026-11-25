@@ -21,6 +21,8 @@ Open [Bot setup](http://127.0.0.1:3000).
 
 Use **Disconnect WhatsApp** to forget the saved device session. Reconnecting requires a new QR scan.
 
+The connection banner distinguishes a linked WhatsApp connection from verified automatic replies. It shows the linked phone number, the last incoming message and successful reply in the current connection, and processing failures. A closed socket cannot report Connected. Send a text from a different WhatsApp account to verify replies; messages sent by the bot account itself and the two internal handoff recipients are excluded. If messages never appear as received, check that the linked number matches the number being contacted. One tick on the sending phone indicates that WhatsApp has not delivered the message; two ticks with no reply requires checking message processing and the AI provider.
+
 The **Active chat model** shows what the running bot will use for new replies. Use **Preview saved prompt** to try the saved instructions with that model without sending a WhatsApp message. When the system prompt changes, new replies use the customer's prior messages and assistant replies generated under the new prompt. The Chats dashboard keeps the full stored transcript.
 
 ## Internal WhatsApp handoffs

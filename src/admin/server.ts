@@ -15,13 +15,14 @@ import { freeRouter, isFreeOpenRouterModel, listFreeOpenRouterModels } from "../
 import { isAxiosError } from "axios";
 import { providers, ProviderName, savePrompt, saveProvider, systemPrompt } from "./config";
 import { HttpError, readBody } from "./http";
+import { botActivity } from "../whatsapp/activity";
 const whatsappSessionId = "default";
 
 function whatsappStatus() {
     const status = sessionManager.getStatus(whatsappSessionId);
     if (status.state === "pairing") return { state: status.state, qrId: status.qrId };
     if (status.state === "error") return { ...status, hasLinkedDevice: hasLinkedDevice(whatsappSessionId) };
-    return status;
+    return { ...status, linkedPhone: sessionManager.getLinkedPhone(whatsappSessionId), activity: botActivity.get(whatsappSessionId) };
 }
 
 const assets: Record<string, string> = {
